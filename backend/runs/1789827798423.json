@@ -1,0 +1,81 @@
+{
+  "ticketText": "Vérifier la position du bouton de validation",
+  "scenario": {
+    "ticketSummary": "Vérifier la position du bouton de validation",
+    "warnings": [],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton de validation est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_text",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": "Continuer",
+        "description": "Vérifier le texte du bouton de validation",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789827798423,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T14:23:18.423Z",
+    "finishedAt": "2026-09-19T14:23:39.109Z",
+    "status": "passed",
+    "phase": "done",
+    "stepsTotal": 3,
+    "stepsRun": 3,
+    "stepsPassed": 3,
+    "currentStep": null,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789827798423-step0-navigate.png",
+        "durationMs": 2290
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton de validation est visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789827798423-step1-assert_visible.png",
+        "durationMs": 144
+      },
+      {
+        "index": 2,
+        "type": "assert_text",
+        "description": "Vérifier le texte du bouton de validation",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789827798423-step2-assert_text.png",
+        "durationMs": 39
+      }
+    ],
+    "crawl": {
+      "title": "Helpify",
+      "elementCount": 16,
+      "durationMs": 11398,
+      "screenshotPath": "debug-screenshots/1789827810397.png"
+    },
+    "error": null
+  }
+}

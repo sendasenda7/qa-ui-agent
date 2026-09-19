@@ -1,0 +1,66 @@
+{
+  "ticketText": "Vérifier la persistance de session",
+  "scenario": {
+    "ticketSummary": "Vérifier que la session reste active après connexion",
+    "warnings": [
+      "Impossible de réaliser la connexion car les champs d'identification (email/mot de passe) et le bouton de soumission ne sont pas présents dans la liste des éléments fournie."
+    ],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "value": null,
+        "description": "Vérifier que le lien \"Se connecter\" est visible",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789829099364,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T14:44:59.364Z",
+    "finishedAt": "2026-09-19T14:45:13.940Z",
+    "status": "passed",
+    "phase": "done",
+    "stepsTotal": 2,
+    "stepsRun": 2,
+    "stepsPassed": 2,
+    "currentStep": null,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829099364-step0-navigate.png",
+        "durationMs": 2050
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le lien \"Se connecter\" est visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829099364-step1-assert_visible.png",
+        "durationMs": 71
+      }
+    ],
+    "crawl": {
+      "title": "Helpify",
+      "elementCount": 16,
+      "durationMs": 7702,
+      "screenshotPath": "debug-screenshots/1789829107359.png"
+    },
+    "error": null
+  }
+}

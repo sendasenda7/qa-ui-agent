@@ -32,10 +32,15 @@ signale-le dans le champ "warnings" plutôt que d'inventer.
 Réponds STRICTEMENT en JSON valide, sans aucun texte autour, selon ce format :
 
 Règle importante sur les éléments marqués "disabledLooking": true dans la liste fournie :
-ils sont visuellement désactivés au chargement de la page. Si le ticket implique de cliquer
-dessus après une autre action (ex. après avoir sélectionné une option), ajoute une étape
-"assert_enabled" juste avant le clic pour vérifier qu'il est redevenu actif — ne clique jamais
-directement dessus sans cette vérification intermédiaire quand il partait désactivé.
+ils sont visuellement désactivés au chargement de la page. N'ajoute une étape "assert_enabled"
+sur un tel élément QUE si les deux conditions suivantes sont vraies :
+  1. le scénario contient, juste avant, une action (fill/select/click sur un AUTRE sélecteur)
+     dont le ticket dit explicitement qu'elle doit réactiver cet élément ;
+  2. le scénario contient, juste après, un "click" sur ce MÊME sélecteur.
+N'ajoute JAMAIS "assert_enabled" isolé, sans action d'activation avant ni clic après : dans ce
+cas, vérifie simplement "assert_visible" si le ticket ne demande rien de plus. Si le ticket ne
+mentionne aucune action susceptible d'activer l'élément, ne suppose pas qu'il faut en choisir une —
+contente-toi de ce que le ticket demande explicitement.
 {
   "ticketSummary": "résumé court du ticket en une phrase",
   "warnings": ["éventuel avertissement si le ticket demande quelque chose d'introuvable"],
@@ -134,7 +139,7 @@ function validateScenario(scenario, crawlResult) {
   const knownSelectors = new Set(crawlResult.elements.map((el) => el.selector));
   const validationWarnings = [...(scenario.warnings || [])];
 
-  const steps = (scenario.steps || []).map((step) => {
+  const withSelectorCheck = (scenario.steps || []).map((step) => {
     const needsSelector = !["navigate", "go_back"].includes(step.type);
     const selectorIsValid = !needsSelector || knownSelectors.has(step.selector);
 
@@ -148,6 +153,35 @@ function validateScenario(scenario, crawlResult) {
       ...step,
       selectorValid: selectorIsValid,
     };
+  });
+
+  // Garde-fou anti-incohérence : un "assert_enabled" n'a de sens que s'il vérifie
+  // l'effet d'une action antérieure sur un AUTRE sélecteur, et s'il est suivi d'un
+  // clic sur ce même élément. Sinon il ne teste rien que le ticket ait demandé
+  // (c'est le bug repéré sur TR-0248 : assert_enabled ajouté sans raison).
+  const steps = withSelectorCheck.filter((step, index) => {
+    if (step.type !== "assert_enabled") return true;
+
+    const hasPriorEnablingAction = withSelectorCheck
+      .slice(0, index)
+      .some(
+        (prev) =>
+          ["fill", "select", "click"].includes(prev.type) &&
+          prev.selector !== step.selector
+      );
+    const isFollowedByClickOnSameElement = withSelectorCheck
+      .slice(index + 1)
+      .some((next) => next.type === "click" && next.selector === step.selector);
+
+    const isCoherent = hasPriorEnablingAction && isFollowedByClickOnSameElement;
+
+    if (!isCoherent) {
+      validationWarnings.push(
+        `Étape incohérente retirée : "assert_enabled" sur "${step.selector}" sans action d'activation avant ni clic après (étape "${step.description}")`
+      );
+    }
+
+    return isCoherent;
   });
 
   return {

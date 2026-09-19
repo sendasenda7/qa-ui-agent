@@ -60,6 +60,14 @@ export function getRun(id) {
 }
 
 /**
+ * Rejoue le scénario exact d'un run existant (sans repasser par le crawl ni par
+ * l'IA). Répond avec { runId } du NOUVEAU run, à suivre comme n'importe quel run.
+ */
+export function replayRun(id) {
+  return postJson(`/api/runs/${id}/replay`);
+}
+
+/**
  * Construit l'URL complète d'un fichier statique renvoyé par le backend
  * (chemins relatifs type "run-screenshots/xxx.png" ou "diff-screenshots/xxx.png").
  */

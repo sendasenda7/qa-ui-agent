@@ -7,7 +7,7 @@ import { crawlPage } from "./crawler.js";
 import { generateScenario } from "./planner.js";
 import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
-import { startRun, getActiveRunCount } from "./run-executor.js";
+import { startRun, startReplay, getActiveRunCount } from "./run-executor.js";
 import { listRuns, readRun, recoverInterruptedRuns } from "./run-store.js";
 
 const app = express();
@@ -95,6 +95,23 @@ app.post(
     }
 
     const { runId } = await startRun({ url, ticketText });
+    res.status(202).json({ runId });
+  })
+);
+
+// Rejoue le scénario EXACT d'un run existant, sans repasser par le crawl ni par l'IA
+// (utile depuis le rapport : "Relancer ce scénario" — donne deux runs strictement
+// comparables pour le diff visuel de l'écran "Visual & RTL").
+app.post(
+  "/api/runs/:id/replay",
+  asyncRoute(async (req, res) => {
+    if (getActiveRunCount() >= MAX_CONCURRENT_RUNS) {
+      return res.status(429).json({
+        error: `Déjà ${MAX_CONCURRENT_RUNS} runs en cours : attends qu'un run se termine avant d'en lancer un autre.`,
+      });
+    }
+
+    const { runId } = await startReplay(req.params.id);
     res.status(202).json({ runId });
   })
 );

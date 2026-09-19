@@ -89,6 +89,7 @@ export async function listRuns({ status } = {}) {
           stepsPassed: runResult.stepsPassed ?? 0,
           stepsRun: runResult.stepsRun ?? 0,
           stepsTotal: runResult.stepsTotal ?? 0,
+          warningsCount: (scenario?.warnings || []).length,
           startedAt: runResult.startedAt,
           finishedAt: runResult.finishedAt ?? null,
         };

@@ -1,22 +1,35 @@
 import { useEffect, useState } from "react";
-import { useParams, Link, Navigate } from "react-router-dom";
-import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
+import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
+import { Loader2, Sparkles, ArrowLeft, RotateCw } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
-import { getRun, screenshotUrl } from "../lib/api.js";
+import { getRun, replayRun, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 
 export default function ReportDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [replaying, setReplaying] = useState(false);
 
   useEffect(() => {
     getRun(id)
       .then(setData)
       .catch((err) => setError(err.message));
   }, [id]);
+
+  async function handleReplay() {
+    setReplaying(true);
+    try {
+      const { runId } = await replayRun(id);
+      navigate(`/live-runs/${runId}`);
+    } catch (err) {
+      setError(err.message);
+      setReplaying(false);
+    }
+  }
 
   if (error) {
     return (
@@ -65,6 +78,20 @@ export default function ReportDetail() {
         <ArrowLeft size={14} />
         Retour aux rapports
       </Link>
+
+      <button
+        type="button"
+        onClick={handleReplay}
+        disabled={replaying}
+        className="self-start flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface disabled:opacity-60"
+      >
+        {replaying ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : (
+          <RotateCw size={13} />
+        )}
+        {replaying ? "Lancement..." : "Relancer ce scénario"}
+      </button>
 
       <header className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
