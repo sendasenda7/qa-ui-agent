@@ -82,11 +82,15 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
     stepDiffs.push({
       index: i,
       description: stepB.description,
+      screenshotA: stepA.screenshot,
+      screenshotB: stepB.screenshot,
       ...result,
     });
   }
 
   const regressions = stepDiffs.filter((s) => s.isRegression);
+  const comparableDiffs = stepDiffs.filter((s) => s.comparable).map((s) => s.diffPercent);
+  const maxDiffPercent = comparableDiffs.length ? Math.max(...comparableDiffs) : null;
 
   return {
     runIdA: runA.runResult.runId,
@@ -94,6 +98,7 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
     stepCount,
     regressionCount: regressions.length,
     hasRegressions: regressions.length > 0,
+    maxDiffPercent,
     steps: stepDiffs,
   };
 }

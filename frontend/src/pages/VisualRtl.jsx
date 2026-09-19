@@ -130,6 +130,7 @@ function VisualDiffTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [report, setReport] = useState(null);
+  const [viewMode, setViewMode] = useState("side-by-side"); // "side-by-side" | "diff"
 
   useEffect(() => {
     getRuns()
@@ -163,7 +164,8 @@ function VisualDiffTab() {
         )}
         {runs && runs.length < 2 && (
           <span className="text-xs text-text-faint">
-            Il faut au moins deux runs sauvegardés pour comparer — lance le même test deux fois depuis "New Run".
+            Il faut au moins deux runs sauvegardés pour comparer — lance le même test deux fois
+            (ou utilise "Relancer ce scénario" depuis un rapport pour garantir un scénario identique).
           </span>
         )}
         {runs && runs.length >= 2 && (
@@ -212,36 +214,111 @@ function VisualDiffTab() {
       )}
 
       {report && (
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-text-muted">
-            {report.regressionCount}/{report.stepCount} étape(s) avec régression
-          </h2>
-          {report.steps.map((step) => (
-            <div key={step.index} className="bg-surface border border-border rounded-xl p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">{step.description}</span>
-                {step.comparable ? (
-                  <span
-                    className={`text-xs font-mono ${
-                      step.isRegression ? "text-danger" : "text-success"
-                    }`}
-                  >
-                    {step.diffPercent}%
-                  </span>
-                ) : (
-                  <span className="text-xs text-text-faint">non comparable</span>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Delta visuel max</span>
+              <span
+                className={`text-2xl font-semibold ${
+                  report.hasRegressions ? "text-danger" : "text-success"
+                }`}
+              >
+                {report.maxDiffPercent !== null ? `${report.maxDiffPercent}%` : "—"}
+              </span>
+              <span className="text-[11px] text-text-faint">seuil de régression : 0.5%</span>
+            </div>
+            <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Régressions</span>
+              <span
+                className={`text-2xl font-semibold ${
+                  report.regressionCount > 0 ? "text-danger" : "text-text"
+                }`}
+              >
+                {report.regressionCount}
+                <span className="text-text-faint text-base"> / {report.stepCount}</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {[
+              { id: "side-by-side", label: "Côte à côte" },
+              { id: "diff", label: "Diff (overlay)" },
+            ].map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setViewMode(mode.id)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${
+                  viewMode === mode.id
+                    ? "bg-surface-raised text-text border border-accent-blue"
+                    : "text-text-faint border border-border"
+                }`}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium text-text-muted">
+              {report.regressionCount}/{report.stepCount} étape(s) avec régression
+            </h2>
+            {report.steps.map((step) => (
+              <div key={step.index} className="bg-surface border border-border rounded-xl p-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm">{step.description}</span>
+                  {step.comparable ? (
+                    <span
+                      className={`text-xs font-mono ${
+                        step.isRegression ? "text-danger" : "text-success"
+                      }`}
+                    >
+                      {step.diffPercent}%
+                    </span>
+                  ) : (
+                    <span className="text-xs text-text-faint">non comparable</span>
+                  )}
+                </div>
+
+                {!step.comparable && step.reason && (
+                  <span className="text-[11px] text-text-faint">{step.reason}</span>
+                )}
+
+                {step.comparable && viewMode === "side-by-side" && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-text-faint">Référence (A)</span>
+                      <img
+                        src={screenshotUrl(step.screenshotA)}
+                        alt={`${step.description} — référence`}
+                        className="rounded-lg border border-border w-full"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-text-faint">Actuel (B)</span>
+                      <img
+                        src={screenshotUrl(step.screenshotB)}
+                        alt={`${step.description} — actuel`}
+                        className={`rounded-lg border w-full ${
+                          step.isRegression ? "border-danger" : "border-border"
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {step.comparable && viewMode === "diff" && step.diffImagePath && (
+                  <img
+                    src={screenshotUrl(step.diffImagePath)}
+                    alt={`${step.description} — diff pixel`}
+                    className="rounded-lg border border-border w-full"
+                  />
                 )}
               </div>
-              {step.comparable && step.diffImagePath && (
-                <img
-                  src={screenshotUrl(step.diffImagePath)}
-                  alt="diff"
-                  className="rounded-lg border border-border w-full"
-                />
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

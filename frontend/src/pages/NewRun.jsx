@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2 } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
@@ -53,9 +53,14 @@ export default function NewRun() {
 
       {/* URL cible */}
       <section className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-xs text-text-muted">
-          <Globe size={14} />
-          URL DE L'ENVIRONNEMENT CIBLE
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <Globe size={14} />
+            URL DE L'ENVIRONNEMENT CIBLE
+          </div>
+          <Link to="/explore" className="text-[11px] text-accent-blue shrink-0">
+            Explorer d'abord →
+          </Link>
         </div>
         <input
           value={url}

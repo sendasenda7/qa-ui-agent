@@ -188,5 +188,10 @@ function validateScenario(scenario, crawlResult) {
     ...scenario,
     steps,
     warnings: validationWarnings,
+    // Score de confiance du PLAN généré (pas de l'exécution) : 100 au départ, pénalisé
+    // pour chaque avertissement réel (sélecteur halluciné neutralisé, étape incohérente
+    // retirée). Ce n'est pas une estimation "IA" — juste le reflet direct des garde-fous
+    // ci-dessus, donc toujours justifiable étape par étape depuis scenario.warnings.
+    confidence: steps.length === 0 ? 0 : Math.max(0, 100 - validationWarnings.length * 15),
   };
 }

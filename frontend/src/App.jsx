@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import AppShell from "./layout/AppShell.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import Explore from "./pages/Explore.jsx";
 import NewRun from "./pages/NewRun.jsx";
 import LiveRuns from "./pages/LiveRuns.jsx";
 import LiveRunDetail from "./pages/LiveRunDetail.jsx";
@@ -13,6 +14,7 @@ export default function App() {
     <AppShell>
       <Routes>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/explore" element={<Explore />} />
         <Route path="/new-run" element={<NewRun />} />
         <Route path="/live-runs" element={<LiveRuns />} />
         <Route path="/live-runs/:id" element={<LiveRunDetail />} />

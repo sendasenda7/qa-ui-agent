@@ -1,0 +1,134 @@
+{
+  "ticketText": "Tester le multi-langue FR/AR",
+  "scenario": {
+    "ticketSummary": "Vérifier le basculement du site entre le français et l'arabe",
+    "warnings": [
+      "Le texte attendu en arabe n'est pas fourni dans le ticket, aucune assertion de texte en arabe n'est ajoutée."
+    ],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page de connexion de l'association",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "value": null,
+        "description": "Vérifier que le lien \"Se connecter\" est visible en français",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_text",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "value": "Se connecter",
+        "description": "Vérifier que le texte du lien est \"Se connecter\"",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton de changement de langue \"Passer en arabe\" est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "click",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "value": null,
+        "description": "Cliquer sur le bouton pour passer en arabe",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "value": null,
+        "description": "Vérifier que le lien \"Se connecter\" reste visible après le basculement",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789829763228,
+    "url": "https://staging.helpify.tn/auth/login/association",
+    "startedAt": "2026-09-19T14:56:03.228Z",
+    "finishedAt": "2026-09-19T14:56:21.091Z",
+    "status": "passed",
+    "phase": "done",
+    "stepsTotal": 6,
+    "stepsRun": 6,
+    "stepsPassed": 6,
+    "currentStep": null,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion de l'association",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step0-navigate.png",
+        "durationMs": 2148
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le lien \"Se connecter\" est visible en français",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step1-assert_visible.png",
+        "durationMs": 73
+      },
+      {
+        "index": 2,
+        "type": "assert_text",
+        "description": "Vérifier que le texte du lien est \"Se connecter\"",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step2-assert_text.png",
+        "durationMs": 44
+      },
+      {
+        "index": 3,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton de changement de langue \"Passer en arabe\" est visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step3-assert_visible.png",
+        "durationMs": 29
+      },
+      {
+        "index": 4,
+        "type": "click",
+        "description": "Cliquer sur le bouton pour passer en arabe",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step4-click.png",
+        "durationMs": 577
+      },
+      {
+        "index": 5,
+        "type": "assert_visible",
+        "description": "Vérifier que le lien \"Se connecter\" reste visible après le basculement",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789829763228-step5-assert_visible.png",
+        "durationMs": 28
+      }
+    ],
+    "crawl": {
+      "title": "Helpify",
+      "elementCount": 19,
+      "durationMs": 7012,
+      "screenshotPath": "debug-screenshots/1789829771505.png"
+    },
+    "error": null
+  }
+}

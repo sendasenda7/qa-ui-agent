@@ -120,11 +120,28 @@ export default function ReportDetail() {
         </div>
       </header>
 
-      {/* Diagnostic — résumé du ticket + avertissements réels (pas de score inventé) */}
+      {/* Diagnostic — résumé du ticket, score de confiance réel du plan (voir planner.js)
+          et avertissements réels : rien n'est inventé, tout se déduit de scenario.warnings. */}
       <section className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
-        <div className="flex items-center gap-2 text-xs text-accent-blue font-medium">
-          <Sparkles size={14} />
-          RÉSUMÉ DU TICKET
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs text-accent-blue font-medium">
+            <Sparkles size={14} />
+            RÉSUMÉ DU TICKET
+          </div>
+          {typeof scenario.confidence === "number" && (
+            <span
+              className={`text-[11px] font-mono px-2 py-0.5 rounded-full ${
+                scenario.confidence >= 85
+                  ? "bg-success-muted text-success"
+                  : scenario.confidence >= 50
+                    ? "bg-warning-muted text-warning"
+                    : "bg-danger-muted text-danger"
+              }`}
+              title="Confiance dans le plan généré : 100% moins 15 points par avertissement (sélecteur halluciné, étape incohérente retirée)."
+            >
+              Confiance : {scenario.confidence}%
+            </span>
+          )}
         </div>
         <p className="text-sm">{scenario.ticketSummary}</p>
         {hasWarnings && (
