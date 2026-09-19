@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  /* Fond & surfaces — bleu-nuit profond plutôt que noir pur */
+  --color-bg: #0a0d16;
+  --color-surface: #121627;
+  --color-surface-raised: #171d33;
+  --color-border: #232a45;
+
+  /* Texte */
+  --color-text: #e7e9f5;
+  --color-text-muted: #8891ac;
+  --color-text-faint: #5b6280;
+
+  /* Accent produit : dégradé violet → bleu (repris des maquettes) */
+  --color-accent-violet: #8a63f2;
+  --color-accent-blue: #4c8dff;
+
+  /* États de test */
+  --color-success: #35d399;
+  --color-success-muted: #16302a;
+  --color-warning: #f2b84b;
+  --color-warning-muted: #332810;
+  --color-danger: #f25a67;
+  --color-danger-muted: #331b20;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Dégradé produit réutilisable (bouton "+ New Run", barres de progression) */
+.gradient-accent {
+  background-image: linear-gradient(90deg, var(--color-accent-violet), var(--color-accent-blue));
+}

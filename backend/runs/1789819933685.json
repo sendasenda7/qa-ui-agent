@@ -1,0 +1,104 @@
+{
+  "scenario": {
+    "ticketSummary": "Tester le passage du français à l'arabe sur la page de login",
+    "warnings": [],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page https://staging.helpify.tn/auth/login",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton de changement de langue \"Passer en arabe\" est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "click",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "value": null,
+        "description": "Cliquer sur le bouton pour passer en arabe",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "value": null,
+        "description": "Vérifier que le lien \"Se connecter\" reste visible après le changement de langue (le texte devrait être en arabe)",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > p:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le lien d'inscription \"S'inscrire ici\" est toujours visible (le texte devrait être traduit en arabe)",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789819933685,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T12:12:13.685Z",
+    "status": "passed",
+    "stepsTotal": 5,
+    "stepsRun": 5,
+    "stepsPassed": 5,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page https://staging.helpify.tn/auth/login",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789819933685-step0-navigate.png",
+        "durationMs": 2229
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton de changement de langue \"Passer en arabe\" est visible",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789819933685-step1-assert_visible.png",
+        "durationMs": 91
+      },
+      {
+        "index": 2,
+        "type": "click",
+        "description": "Cliquer sur le bouton pour passer en arabe",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > button:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789819933685-step2-click.png",
+        "durationMs": 545
+      },
+      {
+        "index": 3,
+        "type": "assert_visible",
+        "description": "Vérifier que le lien \"Se connecter\" reste visible après le changement de langue (le texte devrait être en arabe)",
+        "selector": "div:nth-of-type(1) > app-navbar:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > a:nth-of-type(2)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789819933685-step3-assert_visible.png",
+        "durationMs": 18
+      },
+      {
+        "index": 4,
+        "type": "assert_visible",
+        "description": "Vérifier que le lien d'inscription \"S'inscrire ici\" est toujours visible (le texte devrait être traduit en arabe)",
+        "selector": "div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > p:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789819933685-step4-assert_visible.png",
+        "durationMs": 27
+      }
+    ]
+  }
+}

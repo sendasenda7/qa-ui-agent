@@ -1,0 +1,104 @@
+{
+  "scenario": {
+    "ticketSummary": "Vérifier que je peux choisir \"Je suis un Donateur\" puis cliquer sur Continuer",
+    "warnings": [],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": "https://staging.helpify.tn/auth/login",
+        "description": "Ouvrir la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que l'option \"Je suis un Donateur\" est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "click",
+        "selector": "div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "value": null,
+        "description": "Sélectionner l'option \"Je suis un Donateur\"",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_enabled",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton \"Continuer\" est activé après la sélection",
+        "selectorValid": true
+      },
+      {
+        "type": "click",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Cliquer sur le bouton \"Continuer\"",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789776128942,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T00:02:08.942Z",
+    "status": "passed",
+    "stepsTotal": 5,
+    "stepsRun": 5,
+    "stepsPassed": 5,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789776128942-step0-navigate.png",
+        "durationMs": 2561
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que l'option \"Je suis un Donateur\" est visible",
+        "selector": "div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789776128942-step1-assert_visible.png",
+        "durationMs": 27
+      },
+      {
+        "index": 2,
+        "type": "click",
+        "description": "Sélectionner l'option \"Je suis un Donateur\"",
+        "selector": "div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789776128942-step2-click.png",
+        "durationMs": 44
+      },
+      {
+        "index": 3,
+        "type": "assert_enabled",
+        "description": "Vérifier que le bouton \"Continuer\" est activé après la sélection",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789776128942-step3-assert_enabled.png",
+        "durationMs": 37
+      },
+      {
+        "index": 4,
+        "type": "click",
+        "description": "Cliquer sur le bouton \"Continuer\"",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789776128942-step4-click.png",
+        "durationMs": 26
+      }
+    ]
+  }
+}

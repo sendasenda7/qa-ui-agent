@@ -1,0 +1,72 @@
+{
+  "scenario": {
+    "ticketSummary": "Vérifier la position du bouton de validation",
+    "warnings": [
+      "Impossible de vérifier la position du bouton avec les étapes disponibles"
+    ],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": "https://staging.helpify.tn/auth/login",
+        "description": "Naviguer vers la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton Continuer est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_text",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": "Continuer",
+        "description": "Vérifier que le texte du bouton est 'Continuer'",
+        "selectorValid": true
+      }
+    ]
+  },
+  "runResult": {
+    "runId": 1789823053264,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T13:04:13.264Z",
+    "status": "passed",
+    "stepsTotal": 3,
+    "stepsRun": 3,
+    "stepsPassed": 3,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Naviguer vers la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789823053264-step0-navigate.png",
+        "durationMs": 2355
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton Continuer est visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789823053264-step1-assert_visible.png",
+        "durationMs": 95
+      },
+      {
+        "index": 2,
+        "type": "assert_text",
+        "description": "Vérifier que le texte du bouton est 'Continuer'",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789823053264-step2-assert_text.png",
+        "durationMs": 35
+      }
+    ]
+  }
+}

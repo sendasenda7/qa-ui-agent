@@ -1,0 +1,64 @@
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+async function getJson(path) {
+  const response = await fetch(`${API_BASE_URL}${path}`);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || `Erreur API (${response.status})`);
+  }
+  return data;
+}
+
+async function postJson(path, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || `Erreur API (${response.status})`);
+  }
+
+  return data;
+}
+
+export function runTestPipeline({ url, ticketText }) {
+  return postJson("/api/test-run", { url, ticketText });
+}
+
+export function crawlOnly({ url }) {
+  return postJson("/api/crawl", { url });
+}
+
+export function planOnly({ url, ticketText }) {
+  return postJson("/api/plan", { url, ticketText });
+}
+
+export function checkI18n({ url }) {
+  return postJson("/api/check-i18n", { url });
+}
+
+export function compareRuns({ runIdA, runIdB }) {
+  return postJson("/api/compare", { runIdA, runIdB });
+}
+
+export function getRuns() {
+  return getJson("/api/runs");
+}
+
+export function getRun(id) {
+  return getJson(`/api/runs/${id}`);
+}
+
+/**
+ * Construit l'URL complète d'un fichier statique renvoyé par le backend
+ * (chemins relatifs type "run-screenshots/xxx.png" ou "diff-screenshots/xxx.png").
+ */
+export function screenshotUrl(relativePath) {
+  if (!relativePath) return null;
+  const cleaned = relativePath.replace(/^run-screenshots\//, "screenshots/");
+  return `${API_BASE_URL}/${cleaned}`;
+}

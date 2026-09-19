@@ -1,0 +1,23 @@
+{
+  "name": "qa-ui-agent-backend",
+  "version": "0.1.0",
+  "description": "Backend du projet QA-UI Agent : crawl Playwright, orchestration IA, exécution de scénarios E2E",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "crawl": "node src/crawler.js",
+    "plan": "node src/plan.js",
+    "test-run": "node src/test-run.js",
+    "compare": "node src/compare-runs.js",
+    "check-i18n": "node src/check-i18n.js",
+    "server": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pixelmatch": "^5.3.0",
+    "playwright": "^1.47.0",
+    "pngjs": "^7.0.0"
+  }
+}
