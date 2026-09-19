@@ -1,9 +1,9 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2 } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
-import StatusBadge from "../components/StatusBadge.jsx";
-import { runTestPipeline, screenshotUrl } from "../lib/api.js";
+import { startTestRun } from "../lib/api.js";
 
 const PROMPT_TEMPLATES = [
   "Tester le multi-langue FR/AR",
@@ -14,38 +14,36 @@ const PROMPT_TEMPLATES = [
 const BROWSER_ENGINES = ["Chromium", "Firefox", "WebKit"];
 
 export default function NewRun() {
+  const navigate = useNavigate();
   const [url, setUrl] = useState("https://staging.helpify.tn/auth/login");
   const [ticketText, setTicketText] = useState("");
   const [browserEngine, setBrowserEngine] = useState("Chromium");
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
 
-  const [isRunning, setIsRunning] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
 
+  // Le backend démarre le run en arrière-plan et répond aussitôt avec son identifiant :
+  // on va directement sur la page de suivi en direct.
   async function handleLaunch() {
-    setIsRunning(true);
+    setIsStarting(true);
     setError(null);
-    setResult(null);
     try {
-      const data = await runTestPipeline({ url, ticketText });
-      setResult(data);
+      const { runId } = await startTestRun({ url, ticketText });
+      navigate(`/live-runs/${runId}`);
     } catch (err) {
       setError(err.message);
-    } finally {
-      setIsRunning(false);
+      setIsStarting(false);
     }
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <PipelineTabs currentStep={result ? 4 : 1} />
+      <PipelineTabs currentStep={1} />
 
       <header className="flex flex-col gap-1">
-        <span className="text-xs text-accent-blue font-medium">
-          {result ? "Étape 4 sur 6 — Résultat d'exécution" : "Étape 1 sur 6"}
-        </span>
+        <span className="text-xs text-accent-blue font-medium">Étape 1 sur 6</span>
         <h1 className="text-xl font-semibold">Nouvelle configuration de test</h1>
         <p className="text-sm text-text-muted">
           Configure l'URL cible et décris le ticket à tester — le crawler et l'IA
@@ -156,11 +154,11 @@ export default function NewRun() {
       <button
         type="button"
         onClick={handleLaunch}
-        disabled={!url || !ticketText || isRunning}
+        disabled={!url || !ticketText || isStarting}
         className="gradient-accent rounded-xl py-3 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
       >
-        {isRunning && <Loader2 size={16} className="animate-spin" />}
-        {isRunning ? "Crawl + IA + exécution en cours..." : "Lancer le test"}
+        {isStarting && <Loader2 size={16} className="animate-spin" />}
+        {isStarting ? "Démarrage du test..." : "Lancer le test"}
       </button>
 
       {error && (
@@ -170,42 +168,6 @@ export default function NewRun() {
             Vérifie que le serveur backend tourne bien (npm run server dans le dossier backend).
           </div>
         </div>
-      )}
-
-      {result && (
-        <section className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Résultat d'exécution</span>
-            <StatusBadge status={result.runResult.status} />
-          </div>
-          <span className="text-xs text-text-faint">
-            {result.runResult.stepsPassed}/{result.runResult.stepsTotal} étapes réussies
-          </span>
-
-          <div className="flex flex-col gap-2">
-            {result.runResult.results.map((step) => (
-              <div
-                key={step.index}
-                className="flex items-center gap-3 bg-surface-raised border border-border rounded-lg p-2"
-              >
-                {step.screenshot && (
-                  <img
-                    src={screenshotUrl(step.screenshot)}
-                    alt={step.description}
-                    className="w-14 h-10 object-cover rounded-md border border-border shrink-0"
-                  />
-                )}
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-xs truncate">{step.description}</span>
-                  {step.error && (
-                    <span className="text-[11px] text-danger truncate">{step.error}</span>
-                  )}
-                </div>
-                <StatusBadge status={step.status === "passed" ? "passed" : "failed"} />
-              </div>
-            ))}
-          </div>
-        </section>
       )}
     </div>
   );

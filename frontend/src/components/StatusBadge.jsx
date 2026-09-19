@@ -3,6 +3,7 @@ const STATUS_STYLES = {
   failed: "bg-danger-muted text-danger",
   warning: "bg-warning-muted text-warning",
   running: "bg-accent-blue/15 text-accent-blue",
+  error: "bg-danger-muted text-danger",
 };
 
 const STATUS_LABELS = {
@@ -10,6 +11,7 @@ const STATUS_LABELS = {
   failed: "Échoué",
   warning: "Avertissement",
   running: "En cours",
+  error: "Erreur",
 };
 
 export default function StatusBadge({ status }) {

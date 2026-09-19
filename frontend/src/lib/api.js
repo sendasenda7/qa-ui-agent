@@ -25,7 +25,11 @@ async function postJson(path, body) {
   return data;
 }
 
-export function runTestPipeline({ url, ticketText }) {
+/**
+ * Démarre un run en arrière-plan. Répond tout de suite avec { runId } :
+ * la progression se suit ensuite avec getRun(runId) (voir hooks/useRunPolling.js).
+ */
+export function startTestRun({ url, ticketText }) {
   return postJson("/api/test-run", { url, ticketText });
 }
 
@@ -45,8 +49,10 @@ export function compareRuns({ runIdA, runIdB }) {
   return postJson("/api/compare", { runIdA, runIdB });
 }
 
-export function getRuns() {
-  return getJson("/api/runs");
+/** Liste des runs. Filtre optionnel : getRuns({ status: "running" }). */
+export function getRuns({ status } = {}) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return getJson(`/api/runs${query}`);
 }
 
 export function getRun(id) {

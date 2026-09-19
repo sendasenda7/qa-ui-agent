@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
 import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
 import { getRun, screenshotUrl } from "../lib/api.js";
-
-function formatDuration(ms) {
-  const totalSeconds = Math.round(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-}
+import { formatDuration } from "../lib/format.js";
 
 export default function ReportDetail() {
   const { id } = useParams();
@@ -42,18 +36,26 @@ export default function ReportDetail() {
   }
 
   const { scenario, runResult } = data;
+
+  // Un run encore en cours n'a pas de rapport final : on affiche son suivi en direct.
+  if (runResult.status === "running") {
+    return <Navigate to={`/live-runs/${id}`} replace />;
+  }
+
   const totalDurationMs = runResult.results.reduce((sum, s) => sum + s.durationMs, 0);
   const invalidSelectorCount = scenario.steps.filter((s) => s.selectorValid === false).length;
   const hasWarnings = (scenario.warnings || []).length > 0;
 
+  const isFailure = runResult.status === "failed" || runResult.status === "error";
   const overallLabel =
-    runResult.status === "failed"
-      ? "ÉCHOUÉ"
-      : hasWarnings
-        ? "TERMINÉ AVEC AVERTISSEMENTS"
-        : "TERMINÉ";
-  const overallTone =
-    runResult.status === "failed" ? "danger" : hasWarnings ? "warning" : "success";
+    runResult.status === "error"
+      ? "ERREUR"
+      : runResult.status === "failed"
+        ? "ÉCHOUÉ"
+        : hasWarnings
+          ? "TERMINÉ AVEC AVERTISSEMENTS"
+          : "TERMINÉ";
+  const overallTone = isFailure ? "danger" : hasWarnings ? "warning" : "success";
 
   return (
     <div className="flex flex-col gap-5">
@@ -109,6 +111,12 @@ export default function ReportDetail() {
         )}
       </section>
 
+      {runResult.error && (
+        <div className="bg-danger-muted border border-danger/30 text-danger text-sm rounded-xl p-3">
+          {runResult.error}
+        </div>
+      )}
+
       {/* Cartes de stats */}
       <section className="grid grid-cols-2 gap-3">
         <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
@@ -118,8 +126,8 @@ export default function ReportDetail() {
             <span className="text-text-faint text-base"> / {runResult.stepsTotal}</span>
           </span>
           <ProgressBar
-            percent={(runResult.stepsPassed / runResult.stepsTotal) * 100}
-            tone={runResult.status === "failed" ? "danger" : "success"}
+            percent={runResult.stepsTotal ? (runResult.stepsPassed / runResult.stepsTotal) * 100 : 0}
+            tone={isFailure ? "danger" : "success"}
           />
         </div>
 

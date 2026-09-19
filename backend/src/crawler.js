@@ -160,38 +160,43 @@ export function buildSelectorInBrowser() {
  */
 export async function crawlPage(url) {
   const browser = await chromium.launch();
-  const page = await browser.newPage();
 
-  const startedAt = Date.now();
-  await page.goto(url, { waitUntil: "networkidle" });
-  const title = await page.title();
+  // try/finally : si la page est injoignable (timeout, DNS...), on ferme quand même
+  // Chromium. Indispensable maintenant que les runs tournent en arrière-plan.
+  try {
+    const page = await browser.newPage();
 
-  // Les applis SPA (Angular, React...) affichent parfois le contenu principal
-  // un peu après que le réseau soit "calme" (hydratation côté client).
-  // On laisse une chance à un vrai champ de formulaire d'apparaître avant de lister les éléments.
-  await page
-    .waitForSelector("input, textarea, select", { timeout: 5000 })
-    .catch(() => {
-      // Pas grave si rien n'apparaît : on continue quand même avec ce qui est déjà là.
-    });
+    const startedAt = Date.now();
+    await page.goto(url, { waitUntil: "networkidle" });
+    const title = await page.title();
 
-  const elements = await page.evaluate(buildSelectorInBrowser);
+    // Les applis SPA (Angular, React...) affichent parfois le contenu principal
+    // un peu après que le réseau soit "calme" (hydratation côté client).
+    // On laisse une chance à un vrai champ de formulaire d'apparaître avant de lister les éléments.
+    await page
+      .waitForSelector("input, textarea, select", { timeout: 5000 })
+      .catch(() => {
+        // Pas grave si rien n'apparaît : on continue quand même avec ce qui est déjà là.
+      });
 
-  await mkdir("debug-screenshots", { recursive: true });
-  const screenshotPath = `debug-screenshots/${Date.now()}.png`;
-  await page.screenshot({ path: screenshotPath, fullPage: true });
+    const elements = await page.evaluate(buildSelectorInBrowser);
 
-  await browser.close();
+    await mkdir("debug-screenshots", { recursive: true });
+    const screenshotPath = `debug-screenshots/${Date.now()}.png`;
+    await page.screenshot({ path: screenshotPath, fullPage: true });
 
-  return {
-    url,
-    title,
-    crawledAt: new Date().toISOString(),
-    durationMs: Date.now() - startedAt,
-    elementCount: elements.length,
-    screenshotPath,
-    elements,
-  };
+    return {
+      url,
+      title,
+      crawledAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+      elementCount: elements.length,
+      screenshotPath,
+      elements,
+    };
+  } finally {
+    await browser.close();
+  }
 }
 
 // Exécution directe : `npm run crawl -- <url>`
