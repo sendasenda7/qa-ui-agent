@@ -84,6 +84,7 @@ export async function listRuns({ status } = {}) {
           runId: runResult.runId,
           url: runResult.url,
           ticketSummary: scenario?.ticketSummary ?? "",
+          ticketUrl: content.ticketUrl ?? null,
           status: runResult.status,
           phase: runResult.phase ?? null,
           stepsPassed: runResult.stepsPassed ?? 0,

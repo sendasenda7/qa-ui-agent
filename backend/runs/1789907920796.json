@@ -1,0 +1,68 @@
+{
+  "ticketText": "Vérifier la position du bouton de validation",
+  "ticketUrl": null,
+  "scenario": {
+    "ticketSummary": "Vérifier la position du bouton de validation sur la page de connexion",
+    "warnings": [
+      "Impossible de vérifier la position du bouton avec les étapes disponibles."
+    ],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton de validation \"Continuer\" est visible",
+        "selectorValid": true
+      }
+    ],
+    "confidence": 85
+  },
+  "runResult": {
+    "runId": 1789907920796,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-20T12:38:40.796Z",
+    "finishedAt": "2026-09-20T12:38:59.124Z",
+    "status": "passed",
+    "phase": "done",
+    "stepsTotal": 2,
+    "stepsRun": 2,
+    "stepsPassed": 2,
+    "currentStep": null,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789907920796-step0-navigate.png",
+        "durationMs": 2105
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton de validation \"Continuer\" est visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789907920796-step1-assert_visible.png",
+        "durationMs": 82
+      }
+    ],
+    "crawl": {
+      "title": "Helpify",
+      "elementCount": 16,
+      "durationMs": 11130,
+      "screenshotPath": "debug-screenshots/1789907932520.png"
+    },
+    "error": null
+  }
+}

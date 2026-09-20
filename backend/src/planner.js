@@ -104,6 +104,55 @@ ${JSON.stringify(simplifiedElements, null, 2)}`;
 }
 
 /**
+ * Prompt de la relecture (2e passe) : demande à l'IA de juger sémantiquement son
+ * propre scénario, pas juste sa forme. validateScenario ne peut voir qu'un scénario
+ * mécaniquement invalide (sélecteur inconnu, type inconnu) ; il ne peut pas voir un
+ * scénario mécaniquement PARFAIT qui ne teste pourtant pas ce que demande le ticket
+ * (ex. le ticket demande de vérifier un message d'erreur, et aucune étape ne vérifie
+ * de texte). C'est ce trou que cette relecture comble.
+ */
+function buildReviewSystemPrompt() {
+  return `Tu es un relecteur QA senior. On te donne un ticket et un scénario de test déjà
+généré pour ce ticket. Ta seule tâche : juger si ce scénario teste vraiment ce que le
+ticket demande — pas de le régénérer, pas de le corriger, juste le juger.
+
+Cherche en particulier :
+- une vérification explicitement demandée par le ticket qui n'a pas d'étape correspondante
+  (ex. le ticket parle d'un message, d'un texte, d'une couleur, d'une redirection... et
+  aucune étape "assert_*" ne le vérifie) ;
+- une étape qui ne sert clairement à rien par rapport au ticket ;
+- un ordre d'étapes qui ne peut pas fonctionner (ex. vérifier un élément avant l'action qui
+  le fait apparaître).
+
+Ne signale PAS de problème sur la validité technique des sélecteurs ou des types d'étapes :
+c'est déjà vérifié ailleurs, ce n'est pas ton rôle.
+
+Réponds STRICTEMENT en JSON valide, sans texte autour :
+{
+  "isCoherent": true|false,
+  "issues": ["description courte et concrète de chaque problème trouvé, en français"]
+}
+Si tout va bien, renvoie "issues": [].`;
+}
+
+function buildReviewUserPrompt(ticketText, scenario) {
+  const simplifiedSteps = scenario.steps.map((s) => ({
+    type: s.type,
+    selector: s.selector,
+    value: s.value,
+    description: s.description,
+  }));
+
+  return `TICKET :
+"""
+${ticketText}
+"""
+
+SCÉNARIO GÉNÉRÉ POUR CE TICKET :
+${JSON.stringify(simplifiedSteps, null, 2)}`;
+}
+
+/**
  * Appelle Groq avec retry sur les erreurs transitoires (429, 5xx, coupure réseau).
  * Ne retente jamais une erreur "durable" (401 clé invalide, 400 requête malformée...) :
  * ça échouerait de la même façon à chaque tentative, autant échouer vite et clairement.
@@ -149,11 +198,25 @@ export async function callGroqWithRetry(apiKey, body) {
   throw lastError;
 }
 
+/** Score de confiance : 100 au départ, -15 par avertissement réel. Partagé entre la
+ * validation mécanique (validateScenario) et la relecture sémantique (reviewScenario),
+ * pour que les deux passes pèsent de la même façon sur le score final. */
+function computeConfidence(stepCount, warningCount) {
+  return stepCount === 0 ? 0 : Math.max(0, 100 - warningCount * 15);
+}
+
 /**
  * Appelle Groq et génère un scénario de test structuré à partir d'un ticket
  * et du résultat d'un crawl (voir crawler.js).
+ *
+ * Options :
+ *  - deepReview : si vrai, ajoute une 2e passe Groq qui relit sémantiquement le
+ *    scénario généré (voir reviewScenario) — plus lent et plus coûteux (double le
+ *    nombre d'appels), mais attrape des scénarios mécaniquement valides qui ne
+ *    testent pourtant pas ce que demande le ticket.
  */
-export async function generateScenario(ticketText, crawlResult) {
+export async function generateScenario(ticketText, crawlResult, options = {}) {
+  const { deepReview = false } = options;
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -193,7 +256,56 @@ export async function generateScenario(ticketText, crawlResult) {
     );
   }
 
-  return validateScenario(scenario, crawlResult);
+  const validated = validateScenario(scenario, crawlResult);
+  if (!deepReview || validated.steps.length === 0) {
+    return validated;
+  }
+
+  return reviewScenario(ticketText, validated, apiKey);
+}
+
+/**
+ * 2e passe optionnelle (voir buildReviewSystemPrompt) : demande à l'IA de juger
+ * sémantiquement le scénario déjà validé mécaniquement. Les problèmes trouvés sont
+ * ajoutés à scenario.warnings (préfixés "Relecture IA :" pour les distinguer des
+ * avertissements mécaniques) et pèsent sur la confiance via computeConfidence — pas
+ * de score séparé inventé, même logique que le reste.
+ *
+ * Une relecture qui échoue (Groq indisponible, JSON invalide) ne fait PAS échouer tout
+ * le run : le scénario mécaniquement validé reste utilisable, avec un avertissement
+ * signalant que la relecture n'a pas pu avoir lieu.
+ */
+export async function reviewScenario(ticketText, scenario, apiKey) {
+  let issues;
+  try {
+    const response = await callGroqWithRetry(apiKey, {
+      model: GROQ_MODEL,
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: buildReviewSystemPrompt() },
+        { role: "user", content: buildReviewUserPrompt(ticketText, scenario) },
+      ],
+    });
+
+    const data = await response.json();
+    const rawContent = data.choices?.[0]?.message?.content;
+    const parsed = rawContent ? JSON.parse(rawContent) : null;
+    issues = Array.isArray(parsed?.issues) ? parsed.issues.filter((i) => typeof i === "string") : [];
+  } catch (err) {
+    const warnings = [
+      ...scenario.warnings,
+      `Relecture IA indisponible, scénario non re-vérifié sémantiquement : ${err.message}`,
+    ];
+    return { ...scenario, warnings, confidence: computeConfidence(scenario.steps.length, warnings.length) };
+  }
+
+  if (issues.length === 0) {
+    return scenario;
+  }
+
+  const warnings = [...scenario.warnings, ...issues.map((issue) => `Relecture IA : ${issue}`)];
+  return { ...scenario, warnings, confidence: computeConfidence(scenario.steps.length, warnings.length) };
 }
 
 /**
@@ -284,10 +396,9 @@ export function validateScenario(scenario, crawlResult) {
     ...scenario,
     steps,
     warnings: validationWarnings,
-    // Score de confiance du PLAN généré (pas de l'exécution) : 100 au départ, pénalisé
-    // pour chaque avertissement réel (sélecteur halluciné neutralisé, étape incohérente
-    // retirée). Ce n'est pas une estimation "IA" — juste le reflet direct des garde-fous
+    // Score de confiance du PLAN généré (pas de l'exécution) : voir computeConfidence.
+    // Ce n'est pas une estimation "IA" — juste le reflet direct des garde-fous
     // ci-dessus, donc toujours justifiable étape par étape depuis scenario.warnings.
-    confidence: steps.length === 0 ? 0 : Math.max(0, 100 - validationWarnings.length * 15),
+    confidence: computeConfidence(steps.length, validationWarnings.length),
   };
 }

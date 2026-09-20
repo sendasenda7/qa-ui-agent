@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2 } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { startTestRun } from "../lib/api.js";
@@ -20,9 +20,11 @@ export default function NewRun() {
     location.state?.url || "https://staging.helpify.tn/auth/login"
   );
   const [ticketText, setTicketText] = useState("");
+  const [ticketUrl, setTicketUrl] = useState("");
   const [browserEngine, setBrowserEngine] = useState("Chromium");
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
+  const [deepReview, setDeepReview] = useState(false);
   const [timeoutMs, setTimeoutMs] = useState(10000);
 
   const [isStarting, setIsStarting] = useState(false);
@@ -34,7 +36,7 @@ export default function NewRun() {
     setIsStarting(true);
     setError(null);
     try {
-      const { runId } = await startTestRun({ url, ticketText, timeoutMs });
+      const { runId } = await startTestRun({ url, ticketText, timeoutMs, ticketUrl, deepReview });
       navigate(`/live-runs/${runId}`);
     } catch (err) {
       setError(err.message);
@@ -101,6 +103,21 @@ export default function NewRun() {
               + {template}
             </button>
           ))}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="ticket-url" className="text-xs text-text-muted flex items-center gap-1.5">
+            <Link2 size={12} />
+            LIEN DU TICKET (JIRA/LINEAR, OPTIONNEL)
+          </label>
+          <input
+            id="ticket-url"
+            type="url"
+            value={ticketUrl}
+            onChange={(e) => setTicketUrl(e.target.value)}
+            placeholder="https://linear.app/equipe/issue/HELP-142"
+            className="bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm font-mono text-text placeholder:text-text-faint focus:outline-none focus:border-accent-blue"
+          />
         </div>
       </section>
 
@@ -177,6 +194,20 @@ export default function NewRun() {
             </div>
           </div>
           <Toggle checked={checkVisualDiff} onChange={setCheckVisualDiff} />
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <Sparkles size={16} className="text-text-muted mt-0.5 shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-sm">Relecture IA approfondie</span>
+              <span className="text-[11px] text-text-faint">
+                2e passe Groq qui vérifie que le scénario correspond vraiment au ticket
+                (plus lent, un appel IA supplémentaire)
+              </span>
+            </div>
+          </div>
+          <Toggle checked={deepReview} onChange={setDeepReview} />
         </div>
       </section>
 

@@ -8,7 +8,7 @@ import { generateScenario } from "./planner.js";
 import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { startRun, startReplay, getActiveRunCount } from "./run-executor.js";
-import { listRuns, readRun, recoverInterruptedRuns } from "./run-store.js";
+import { listRuns, readRun, saveRun, recoverInterruptedRuns } from "./run-store.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -81,7 +81,7 @@ app.post(
 app.post(
   "/api/plan",
   asyncRoute(async (req, res) => {
-    const { url, ticketText, timeoutMs } = req.body;
+    const { url, ticketText, timeoutMs, deepReview } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
@@ -89,7 +89,7 @@ app.post(
     const crawlResult = await crawlPage(url, {
       navigationTimeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_NAVIGATION_TIMEOUT_MS),
     });
-    const scenario = await generateScenario(ticketText, crawlResult);
+    const scenario = await generateScenario(ticketText, crawlResult, { deepReview: !!deepReview });
     res.json({ crawlResult, scenario });
   })
 );
@@ -100,12 +100,15 @@ app.post(
 app.post(
   "/api/test-run",
   asyncRoute(async (req, res) => {
-    const { url, ticketText, timeoutMs } = req.body;
+    const { url, ticketText, timeoutMs, ticketUrl, deepReview } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
     if (!isHttpUrl(url)) {
       return res.status(400).json({ error: "url invalide (http:// ou https:// attendu)" });
+    }
+    if (ticketUrl && !isHttpUrl(ticketUrl)) {
+      return res.status(400).json({ error: "ticketUrl invalide (http:// ou https:// attendu)" });
     }
     if (getActiveRunCount() >= MAX_CONCURRENT_RUNS) {
       return res.status(429).json({
@@ -117,6 +120,8 @@ app.post(
       url,
       ticketText,
       timeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_STEP_TIMEOUT_MS),
+      ticketUrl: ticketUrl || null,
+      deepReview: !!deepReview,
     });
     res.status(202).json({ runId });
   })
@@ -169,6 +174,30 @@ app.get(
     const content = await readRun(req.params.id);
     if (!content) return res.status(404).json({ error: "Run introuvable" });
     res.json(content);
+  })
+);
+
+const MAX_NOTES_LENGTH = 5000;
+
+// Notes manuelles libres sur un run (ex. "faux positif, confirmé avec l'encadrante") —
+// remplace entièrement les notes existantes, écrase donc l'ancienne valeur si présente.
+app.patch(
+  "/api/runs/:id/notes",
+  asyncRoute(async (req, res) => {
+    const { notes } = req.body;
+    if (typeof notes !== "string") {
+      return res.status(400).json({ error: "notes doit être une chaîne de caractères" });
+    }
+    if (notes.length > MAX_NOTES_LENGTH) {
+      return res.status(400).json({ error: `notes trop longues (max ${MAX_NOTES_LENGTH} caractères)` });
+    }
+
+    const content = await readRun(req.params.id);
+    if (!content) return res.status(404).json({ error: "Run introuvable" });
+
+    content.notes = notes;
+    await saveRun(req.params.id, content);
+    res.json({ notes });
   })
 );
 

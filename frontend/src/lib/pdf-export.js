@@ -30,7 +30,7 @@ async function fetchImageAsDataUrl(relativePath) {
  * avertissements réels, liste des étapes avec statut, et la dernière capture
  * d'écran comme aperçu visuel de l'état final de la page.
  */
-export async function exportRunReportToPdf({ scenario, runResult }) {
+export async function exportRunReportToPdf({ scenario, runResult, ticketUrl }) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   let y = MARGIN;
 
@@ -72,6 +72,13 @@ export async function exportRunReportToPdf({ scenario, runResult }) {
   const summaryLines = doc.splitTextToSize(scenario.ticketSummary || "—", CONTENT_WIDTH);
   doc.text(summaryLines, MARGIN, y);
   y += summaryLines.length * 5 + 2;
+
+  if (ticketUrl) {
+    doc.setTextColor(40, 90, 200);
+    doc.textWithLink("Voir le ticket →", MARGIN, y, { url: ticketUrl });
+    doc.setTextColor(0, 0, 0);
+    y += 6;
+  }
 
   if (typeof scenario.confidence === "number") {
     doc.text(`Score de confiance du plan généré : ${scenario.confidence}%`, MARGIN, y);

@@ -25,12 +25,28 @@ async function postJson(path, body) {
   return data;
 }
 
+async function patchJson(path, body) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || `Erreur API (${response.status})`);
+  }
+
+  return data;
+}
+
 /**
  * Démarre un run en arrière-plan. Répond tout de suite avec { runId } :
  * la progression se suit ensuite avec getRun(runId) (voir hooks/useRunPolling.js).
  */
-export function startTestRun({ url, ticketText, timeoutMs }) {
-  return postJson("/api/test-run", { url, ticketText, timeoutMs });
+export function startTestRun({ url, ticketText, timeoutMs, ticketUrl, deepReview }) {
+  return postJson("/api/test-run", { url, ticketText, timeoutMs, ticketUrl, deepReview });
 }
 
 export function crawlOnly({ url, timeoutMs }) {
@@ -57,6 +73,11 @@ export function getRuns({ status } = {}) {
 
 export function getRun(id) {
   return getJson(`/api/runs/${id}`);
+}
+
+/** Remplace entièrement les notes manuelles d'un run (voir ReportDetail.jsx). */
+export function saveRunNotes(id, notes) {
+  return patchJson(`/api/runs/${id}/notes`, { notes });
 }
 
 /**

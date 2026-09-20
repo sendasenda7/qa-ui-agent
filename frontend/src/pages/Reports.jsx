@@ -1,18 +1,29 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, ChevronRight } from "lucide-react";
+import { Loader2, ChevronRight, Search } from "lucide-react";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { getRuns } from "../lib/api.js";
 
 export default function Reports() {
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     getRuns()
       .then(setRuns)
       .catch((err) => setError(err.message));
   }, []);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRuns = runs
+    ? runs.filter(
+        (run) =>
+          !normalizedQuery ||
+          run.ticketSummary?.toLowerCase().includes(normalizedQuery) ||
+          run.url?.toLowerCase().includes(normalizedQuery)
+      )
+    : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -22,6 +33,18 @@ export default function Reports() {
           Rapport détaillé de chaque test exécuté.
         </p>
       </header>
+
+      {runs && runs.length > 0 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher par ticket ou URL..."
+            className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none focus:border-accent-blue"
+          />
+        </div>
+      )}
 
       {error && (
         <div className="bg-danger-muted border border-danger/30 text-danger text-sm rounded-xl p-3">
@@ -40,8 +63,12 @@ export default function Reports() {
         <p className="text-sm text-text-faint">Aucun rapport pour l'instant.</p>
       )}
 
+      {runs && runs.length > 0 && visibleRuns.length === 0 && (
+        <p className="text-sm text-text-faint">Aucun rapport ne correspond à "{query}".</p>
+      )}
+
       <div className="flex flex-col gap-2">
-        {runs?.map((run) => (
+        {visibleRuns?.map((run) => (
           <Link
             key={run.runId}
             to={`/reports/${run.runId}`}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Search } from "lucide-react";
 import StatCard from "../components/StatCard.jsx";
 import RunListItem from "../components/RunListItem.jsx";
 import PipelineStrip from "../components/PipelineStrip.jsx";
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     getRuns()
@@ -35,12 +36,20 @@ export default function Dashboard() {
 
   const passRate = stats && stats.total ? Math.round((stats.passed / stats.total) * 100) : null;
 
+  const normalizedQuery = query.trim().toLowerCase();
+
   const visibleRuns = runs
     ? runs.filter((r) => {
-        if (filter === "all") return true;
-        if (filter === "running") return r.status === "running";
-        if (filter === "failed") return r.status === "failed" || r.status === "error";
-        if (filter === "warnings") return (r.warningsCount ?? 0) > 0;
+        if (filter === "running" && r.status !== "running") return false;
+        if (filter === "failed" && r.status !== "failed" && r.status !== "error") return false;
+        if (filter === "warnings" && !((r.warningsCount ?? 0) > 0)) return false;
+        if (
+          normalizedQuery &&
+          !r.ticketSummary?.toLowerCase().includes(normalizedQuery) &&
+          !r.url?.toLowerCase().includes(normalizedQuery)
+        ) {
+          return false;
+        }
         return true;
       })
     : null;
@@ -128,6 +137,18 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+
+          {runs.length > 0 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Rechercher par ticket ou URL..."
+                className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none focus:border-accent-blue"
+              />
+            </div>
+          )}
 
           {visibleRuns.length === 0 ? (
             <p className="text-sm text-text-faint">

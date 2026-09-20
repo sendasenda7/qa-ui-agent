@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
-import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown, StickyNote, Check, ExternalLink } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
-import { getRun, replayRun, screenshotUrl } from "../lib/api.js";
+import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 
 export default function ReportDetail() {
@@ -173,6 +173,17 @@ export default function ReportDetail() {
           )}
         </div>
         <p className="text-sm">{scenario.ticketSummary}</p>
+        {data.ticketUrl && (
+          <a
+            href={data.ticketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] text-accent-blue w-fit"
+          >
+            <ExternalLink size={11} />
+            Voir le ticket
+          </a>
+        )}
         {hasWarnings && (
           <ul className="flex flex-col gap-1 mt-1">
             {scenario.warnings.map((w, i) => (
@@ -262,6 +273,74 @@ export default function ReportDetail() {
           </div>
         ))}
       </section>
+
+      <NotesSection runId={id} initialNotes={data.notes ?? ""} />
     </div>
+  );
+}
+
+/**
+ * Notes manuelles libres sur un run (ex. "faux positif, confirmé avec Malek").
+ * Séparé en composant pour garder son propre état local (texte en cours d'édition)
+ * sans re-render de tout ReportDetail à chaque frappe.
+ */
+function NotesSection({ runId, initialNotes }) {
+  const [notes, setNotes] = useState(initialNotes);
+  const [savedNotes, setSavedNotes] = useState(initialNotes);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const hasUnsavedChanges = notes !== savedNotes;
+
+  async function handleSave() {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await saveRunNotes(runId, notes);
+      setSavedNotes(notes);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <section className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          <StickyNote size={14} />
+          NOTES
+        </div>
+        {!hasUnsavedChanges && savedNotes && !isSaving && (
+          <span className="flex items-center gap-1 text-[11px] text-success">
+            <Check size={12} />
+            Enregistré
+          </span>
+        )}
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Ex. faux positif confirmé avec l'encadrante, à revoir après le fix du champ email..."
+        rows={4}
+        maxLength={5000}
+        className={`bg-surface-raised border rounded-lg px-3 py-2 text-sm resize-y placeholder:text-text-faint focus:outline-none focus:border-accent-blue transition-colors ${
+          hasUnsavedChanges ? "border-accent-blue/50" : "border-border"
+        }`}
+      />
+      {error && <span className="text-[11px] text-danger">{error}</span>}
+      {(hasUnsavedChanges || isSaving) && (
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="self-end gradient-accent text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-60 flex items-center gap-1.5"
+        >
+          {isSaving && <Loader2 size={12} className="animate-spin" />}
+          {isSaving ? "Enregistrement..." : "Enregistrer"}
+        </button>
+      )}
+    </section>
   );
 }

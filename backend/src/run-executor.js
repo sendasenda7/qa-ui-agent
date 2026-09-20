@@ -122,12 +122,16 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs) {
  *
  * `deps` permet d'injecter de fausses implémentations (crawl, plan, run) dans les tests.
  */
-export async function startRun({ url, ticketText, timeoutMs }, deps = {}) {
+export async function startRun(
+  { url, ticketText, timeoutMs, ticketUrl = null, deepReview = false },
+  deps = {}
+) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
 
   const runId = nextRunId();
   const state = {
     ticketText,
+    ticketUrl,
     // Provisoire : remplacé par le vrai scénario une fois généré par l'IA.
     scenario: { ticketSummary: truncate(ticketText), warnings: [], steps: [] },
     runResult: makeRunResult(runId, url, "crawling"),
@@ -152,7 +156,7 @@ export async function startRun({ url, ticketText, timeoutMs }, deps = {}) {
       runResult.phase = "planning";
       await saveRun(runId, state);
 
-      const scenario = await plan(ticketText, crawlResult);
+      const scenario = await plan(ticketText, crawlResult, { deepReview });
       if (!scenario.steps || scenario.steps.length === 0) {
         const reasons = (scenario.warnings || []).join(" ");
         throw new Error(
@@ -200,6 +204,7 @@ export async function startReplay(sourceRunId, deps = {}) {
   const runId = nextRunId();
   const state = {
     ticketText: source.ticketText,
+    ticketUrl: source.ticketUrl ?? null,
     scenario,
     runResult: { ...makeRunResult(runId, sourceRunResult.url, "running"), replayOf: sourceRunId },
   };

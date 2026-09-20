@@ -35,7 +35,7 @@ Ouvre une URL avec Playwright, attend le réseau stable (`networkidle`), puis li
 les éléments cliquables sans sémantique HTML détectés par heuristique de curseur) et calcule pour
 chacun le sélecteur le plus stable possible : `data-testid` > `id` > `name` > CSS de secours
 (signalé comme fragile). C'est cette liste, jamais l'IA seule, qui décide des sélecteurs
-utilisables ensuite.
+utilisables ensuite. Timeout de navigation configurable (`navigationTimeoutMs`, défaut 30s).
 
 ```bash
 cd backend
@@ -50,17 +50,31 @@ Prend le texte d'un ticket + le résultat du crawl, et appelle Groq (mode JSON s
 générer un scénario structuré : une liste d'étapes (`navigate`, `click`, `fill`, `select`,
 `assert_visible`, `assert_enabled`, `assert_text`, `go_back`), chacune avec un sélecteur.
 
-**Garde-fous** (`validateScenario`, testés dans `test/planner.test.js`) :
+**Garde-fous mécaniques** (`validateScenario`, testés dans `test/planner.test.js`) :
 - **Anti-hallucination** : tout sélecteur utilisé par l'IA qui n'existe pas dans la liste fournie
   par le crawl est neutralisé (`selectorValid: false`) et un avertissement est ajouté.
 - **Anti-incohérence** : une étape `assert_enabled` n'est conservée que si elle est précédée d'une
   action d'activation (fill/select/click sur un autre sélecteur) *et* suivie d'un clic sur le même
   élément — sinon elle est retirée. Corrige un bug réel rencontré (run TR-0248) où l'IA ajoutait
   cette vérification sans qu'aucune action ne soit censée activer l'élément.
+- **Validation structurelle** : un `steps` qui n'est pas un tableau, une étape qui n'est pas un
+  objet, ou un type d'étape halluciné (hors de la liste connue) sont neutralisés avec un
+  avertissement clair, plutôt que de planter plus tard dans `runner.js`.
 - **Score de confiance** (`scenario.confidence`) : 100% moins 15 points par avertissement réel —
-  directement dérivé de `scenario.warnings`, jamais une estimation inventée.
+  directement dérivé de `scenario.warnings`, jamais une estimation inventée (`computeConfidence`,
+  partagée entre la validation mécanique et la relecture ci-dessous).
 - **Retry automatique** (`callGroqWithRetry`, testé dans `test/planner-retry.test.js`) : jusqu'à 3
   tentatives avec backoff exponentiel sur 429/5xx/erreur réseau ; abandon immédiat sur 401/400.
+
+**Relecture IA optionnelle (double-passe)** (`reviewScenario`, testée dans
+`test/planner-review.test.js`) : activable via le toggle "Relecture IA approfondie" (désactivé
+par défaut — plus lent, un 2ᵉ appel Groq). Contrairement aux garde-fous mécaniques ci-dessus, qui
+ne voient qu'un scénario invalide dans sa forme, cette 2ᵉ passe juge la **cohérence sémantique** :
+un scénario peut être mécaniquement parfait (sélecteurs valides, types connus) tout en ne testant
+pas ce que le ticket demande (ex. aucune étape ne vérifie un message d'erreur pourtant explicite
+dans le ticket). Les problèmes trouvés sont ajoutés à `scenario.warnings` (préfixés
+`"Relecture IA : "`) et pèsent sur la confiance comme n'importe quel autre avertissement. Dégrade
+proprement si Groq est indisponible : le scénario déjà validé reste utilisable.
 
 ```bash
 cp .env.example .env   # puis colle ta clé GROQ_API_KEY
@@ -84,7 +98,13 @@ npm run test-run -- https://staging.helpify.tn/auth/login "Vérifier que je peux
 
 **Rejouer un scénario exact** (`run-executor.js` / `startReplay`) : rejoue les mêmes étapes sans
 repasser par le crawl ni par l'IA — donne deux runs strictement comparables pour le diff visuel
-(bouton "Relancer ce scénario" dans le rapport du frontend).
+(bouton "Relancer ce scénario" dans le rapport du frontend). Conserve le `ticketUrl` du run
+d'origine.
+
+**Récupération après crash** (`run-store.js` / `recoverInterruptedRuns`) : au démarrage du
+serveur, tout run resté marqué `"running"` sur disque (le process a été interrompu pendant son
+exécution) est automatiquement repassé en `"error"`, pour ne jamais rester "en cours"
+indéfiniment.
 
 ### 4. Diff visuel entre deux runs (`visual-diff.js`)
 
@@ -124,28 +144,30 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire. Couvre les garde-fous de `planner.js`
-(sélecteur halluciné, incohérence `assert_enabled`, score de confiance, retry Groq) et
-`visual-diff.js` (comparaison identique/régression/dimensions différentes/scénarios non
-comparables).
+`node:test` natif, aucune dépendance supplémentaire — 25 tests. Couvre les garde-fous de
+`planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
+de confiance, retry Groq, relecture IA double-passe) et `visual-diff.js` (comparaison
+identique/régression/dimensions différentes/scénarios non comparables).
 
 ## Le frontend
 
 App React (Vite + Tailwind), thème sombre. Écrans principaux :
 
-- **Dashboard** — stats des runs récents (total/réussis/échoués/avertissements), filtres, bandeau
-  pipeline cliquable (Ticket → Explore → E2E → Diff → RTL).
+- **Dashboard** — stats des runs récents (total/réussis/échoués/avertissements), filtres de
+  statut + recherche par ticket ou URL, bandeau pipeline cliquable (Ticket → Explore → E2E → Diff
+  → RTL).
 - **Explore** (`/explore`) — lance le crawl seul, affiche les éléments détectés avec leur
   sélecteur et stratégie ; bouton pour passer directement à "New Test" avec l'URL pré-remplie.
-- **New Test** (`/new-run`) — configuration du run : URL, ticket, timeout, toggles RTL/diff
-  visuel.
+- **New Test** (`/new-run`) — configuration du run : URL, ticket, lien du ticket Jira/Linear
+  (optionnel), timeout, toggles RTL/diff visuel/relecture IA approfondie.
 - **Live Run** (`/live-runs/:id`) — suivi en direct d'un run (captures d'écran réelles au fil de
   l'exécution).
 - **Visual & RTL** (`/visual-rtl`) — comparateur de deux runs (côte à côte ou diff overlay) +
   vérification i18n.
-- **Rapport** (`/reports/:id`) — résumé du ticket, score de confiance, étapes détaillées, bouton
-  "Relancer ce scénario", export PDF (`jspdf`, chargé en import dynamique pour ne pas alourdir le
-  bundle principal).
+- **Rapport** (`/reports/:id`) — résumé du ticket + lien vers le ticket externe, score de
+  confiance, étapes détaillées, notes manuelles libres, bouton "Relancer ce scénario", export PDF
+  (`jspdf`, chargé en import dynamique pour ne pas alourdir le bundle principal).
+- **Rapports** (`/reports`) — liste de tous les runs, avec recherche par ticket ou URL.
 
 ```bash
 cd frontend
@@ -155,5 +177,6 @@ npm run dev
 
 ## Prochaines pistes
 
+- Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Support multi-page dans un scénario (naviguer vers une 2ᵉ URL en cours de route)
 - Historique du score de confiance dans le temps, par ticket
