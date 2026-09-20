@@ -1,155 +1,159 @@
-<<<<<<< HEAD
 # QA-UI Agent
 
-Projet personnel complémentaire au stage QA (DevWise) : génération et exécution automatique de tests E2E à partir d'un ticket en langage naturel.
+Projet personnel complémentaire au stage QA (DevWise) : génération et exécution automatique
+de tests E2E à partir d'un ticket en langage naturel, avec diff visuel, vérification FR/AR/RTL
+et un dashboard React.
 
 ## Structure
 
 ```
 qa-ui-agent/
-├── backend/          # API + moteur Playwright (Node.js)
-│   └── src/
-│       └── crawler.js   # Étape 1 : crawl d'une page, détection des éléments interactifs
-└── frontend/         # UI React (à venir)
+├── backend/
+│   ├── src/
+│   │   ├── crawler.js           # Étape 1 : crawl d'une page, détection des éléments interactifs
+│   │   ├── planner.js           # Étape 2 : génération du scénario par l'IA (Groq) + garde-fous
+│   │   ├── runner.js            # Étape 3 : exécution réelle du scénario (Playwright)
+│   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
+│   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
+│   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json)
+│   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay)
+│   │   └── server.js            # API Express consommée par le frontend
+│   └── test/                    # Tests unitaires (node:test)
+└── frontend/                    # UI React (Vite + Tailwind)
+    └── src/
+        ├── pages/                # Dashboard, Explore, NewRun, LiveRunDetail, VisualRtl, ReportDetail...
+        ├── components/
+        └── lib/                  # api.js, pdf-export.js
 ```
 
-## Étape 1 — Le crawler (fait)
+## Le pipeline (backend)
 
-`backend/src/crawler.js` ouvre une URL avec Playwright, attend le réseau stable (`networkidle`),
-puis liste tous les éléments interactifs visibles (boutons, liens, inputs, selects, éléments
-avec `role`, etc.) et calcule pour chacun le sélecteur le plus stable possible, dans cet ordre :
+### 1. Crawl (`crawler.js`)
 
-1. `data-testid` / `data-test-id`
-2. `id`
-3. `name`
-4. sélecteur CSS de secours (chemin dans le DOM — signalé comme fragile)
-
-C'est cette liste qui sera ensuite donnée à l'IA (avec le texte du ticket) pour générer le
-scénario de test, plutôt que de laisser l'IA deviner des sélecteurs à l'aveugle.
-
-### Lancer le crawl
+Ouvre une URL avec Playwright, attend le réseau stable (`networkidle`), puis liste tous les
+éléments interactifs visibles (boutons, liens, inputs, selects, éléments avec `role`, ainsi que
+les éléments cliquables sans sémantique HTML détectés par heuristique de curseur) et calcule pour
+chacun le sélecteur le plus stable possible : `data-testid` > `id` > `name` > CSS de secours
+(signalé comme fragile). C'est cette liste, jamais l'IA seule, qui décide des sélecteurs
+utilisables ensuite.
 
 ```bash
 cd backend
 npm install
-npx playwright install chromium   # télécharge le binaire du navigateur (une seule fois)
+npx playwright install chromium   # une seule fois
 npm run crawl -- https://the-internet.herokuapp.com/login
 ```
 
-> Note : dans l'environnement où ce projet a été généré, le téléchargement du binaire Chromium
-> par `npx playwright install` a été bloqué par les restrictions réseau du sandbox
-> (`cdn.playwright.dev` n'est pas autorisé). Le code est syntaxiquement validé mais n'a pas pu
-> être exécuté de bout en bout ici — à tester chez toi où l'accès réseau est complet.
+### 2. Génération du scénario par l'IA (`planner.js`)
 
-Le script affiche un JSON avec, pour chaque élément : tag, type, rôle, nom accessible,
-sélecteur recommandé, et la stratégie utilisée pour le trouver.
+Prend le texte d'un ticket + le résultat du crawl, et appelle Groq (mode JSON strict) pour
+générer un scénario structuré : une liste d'étapes (`navigate`, `click`, `fill`, `select`,
+`assert_visible`, `assert_enabled`, `assert_text`, `go_back`), chacune avec un sélecteur.
 
-## Étape 2 — Le module IA (fait)
-
-`backend/src/planner.js` prend en entrée le texte d'un ticket + le résultat du crawler, et
-appelle Groq (`llama-3.3-70b-versatile`, mode JSON strict) pour générer un scénario de test
-structuré : une liste d'étapes (`navigate`, `click`, `fill`, `select`, `assert_visible`,
-`assert_text`, `go_back`), chacune avec un sélecteur.
-
-**Garde-fou anti-hallucination** : après la réponse de l'IA, `validateScenario()` vérifie que
-chaque sélecteur utilisé existe réellement dans la liste fournie. Si l'IA invente un sélecteur
-qui n'existe pas, l'étape est marquée `"selectorValid": false` et un avertissement est ajouté
-— plutôt que de laisser passer un sélecteur qui ferait planter l'exécution plus tard.
-
-### Configuration
+**Garde-fous** (`validateScenario`, testés dans `test/planner.test.js`) :
+- **Anti-hallucination** : tout sélecteur utilisé par l'IA qui n'existe pas dans la liste fournie
+  par le crawl est neutralisé (`selectorValid: false`) et un avertissement est ajouté.
+- **Anti-incohérence** : une étape `assert_enabled` n'est conservée que si elle est précédée d'une
+  action d'activation (fill/select/click sur un autre sélecteur) *et* suivie d'un clic sur le même
+  élément — sinon elle est retirée. Corrige un bug réel rencontré (run TR-0248) où l'IA ajoutait
+  cette vérification sans qu'aucune action ne soit censée activer l'élément.
+- **Score de confiance** (`scenario.confidence`) : 100% moins 15 points par avertissement réel —
+  directement dérivé de `scenario.warnings`, jamais une estimation inventée.
+- **Retry automatique** (`callGroqWithRetry`, testé dans `test/planner-retry.test.js`) : jusqu'à 3
+  tentatives avec backoff exponentiel sur 429/5xx/erreur réseau ; abandon immédiat sur 401/400.
 
 ```bash
-cd backend
-cp .env.example .env
-# puis édite .env et colle ta clé Groq à la place de "colle_ta_clé_ici"
-```
-
-### Lancer crawl + génération IA en une commande
-
-```bash
+cp .env.example .env   # puis colle ta clé GROQ_API_KEY
 npm run plan -- https://staging.helpify.tn/auth/login "Vérifier que je peux choisir Je suis un Donateur puis continuer"
 ```
 
-Le script affiche le scénario JSON généré, avec un résumé du ticket, la liste des étapes,
-et d'éventuels avertissements.
+### 3. Exécution réelle (`runner.js`)
 
-## Étape 3 — L'exécution réelle (fait)
+Exécute le scénario dans un vrai Chromium : clic, saisie, sélection, vérifications. Capture un
+screenshot après CHAQUE étape (succès ou échec) et s'arrête dès la première étape en échec.
+`assert_enabled` vérifie qu'un élément n'est plus désactivé (`disabled`, `aria-disabled`, ou
+curseur `not-allowed`).
 
-`backend/src/runner.js` prend un scénario généré (voir étape 2) et l'exécute réellement dans
-un vrai navigateur Playwright : clic, saisie, sélection, vérifications. Une capture d'écran
-est prise après CHAQUE étape (succès ou échec) — c'est souvent l'échec qui est le plus utile
-à voir visuellement. Le scénario s'arrête dès qu'une étape échoue.
-
-Nouveau type d'étape ajouté suite à un cas réel rencontré sur Helpify : `assert_enabled`
-vérifie qu'un élément n'est plus désactivé (attribut `disabled`, `aria-disabled`, ou curseur
-`not-allowed`) — utile pour les boutons qui ne s'activent qu'après une autre action.
-
-### Lancer le pipeline complet (crawl + IA + exécution réelle)
+Timeouts configurables (`stepTimeoutMs` par défaut 10s, `navigationTimeoutMs` par défaut 30s),
+utile sur un environnement de staging plus lent — réglable via l'écran "New Test" du frontend ou
+le paramètre `timeoutMs` de l'API.
 
 ```bash
 npm run test-run -- https://staging.helpify.tn/auth/login "Vérifier que je peux choisir Je suis un Donateur puis continuer"
 ```
 
-Le script affiche le statut global (`PASSED`/`FAILED`), le détail de chaque étape, et le
-chemin vers les captures d'écran dans `backend/run-screenshots/`.
+**Rejouer un scénario exact** (`run-executor.js` / `startReplay`) : rejoue les mêmes étapes sans
+repasser par le crawl ni par l'IA — donne deux runs strictement comparables pour le diff visuel
+(bouton "Relancer ce scénario" dans le rapport du frontend).
 
-## Étape 4 — Diff visuel entre deux runs (fait)
+### 4. Diff visuel entre deux runs (`visual-diff.js`)
 
-Chaque run est maintenant sauvegardé dans `backend/runs/<runId>.json` (fait automatiquement
-par `npm run test-run`). `backend/src/visual-diff.js` compare deux runs sauvegardés,
-étape par étape, en comparant leurs screenshots pixel par pixel (librairie `pixelmatch`).
+Chaque run est sauvegardé dans `backend/runs/<runId>.json`. `compareRuns` compare deux runs
+étape par étape (pixel par pixel, via `pixelmatch`) ; une étape est une régression si plus de
+**0,5%** des pixels diffèrent (`REGRESSION_THRESHOLD_PERCENT`). Si les dimensions diffèrent, la
+comparaison est signalée `comparable: false` plutôt que de donner un résultat trompeur.
 
-Une étape est signalée comme régression visuelle si plus de **0,5% des pixels** diffèrent
-entre les deux runs (seuil réglable dans `REGRESSION_THRESHOLD_PERCENT`, `visual-diff.js`).
-Si les deux screenshots n'ont pas les mêmes dimensions (mise en page changée), la comparaison
-est signalée `"comparable": false` plutôt que de donner un résultat trompeur.
-
-### Comparer deux runs
+`compareRuns` détecte aussi et **signale** (au lieu de comparer en silence) : un nombre d'étapes
+différent entre les deux runs, ou des descriptions d'étape différentes au même index — deux
+indices que ce n'est probablement pas le même scénario rejoué.
 
 ```bash
-# 1. Lance le pipeline deux fois (à des moments différents, ou après un changement de code)
-npm run test-run -- https://staging.helpify.tn/auth/login "Vérifier que je peux choisir Je suis un Donateur puis continuer"
-# note le runId affiché (ex: runs/1789775621266.json)
-
-npm run test-run -- https://staging.helpify.tn/auth/login "Vérifier que je peux choisir Je suis un Donateur puis continuer"
-# note le deuxième runId
-
-# 2. Compare les deux
-npm run compare -- 1789775621266 1789776xxxxxx
+npm run test-run -- <url> "<ticket>"   # une première fois, note le runId
+npm run test-run -- <url> "<ticket>"   # une deuxième fois, note le runId
+npm run compare -- <runIdA> <runIdB>
 ```
 
-Le rapport affiche, pour chaque étape, le pourcentage de pixels différents et si c'est jugé
-une régression. Les images de diff (zones différentes surlignées) sont dans
-`backend/diff-screenshots/`.
+### 5. FR/AR + RTL (`localization-check.js`)
 
-## Étape 5 — FR/AR + RTL (fait)
-
-`backend/src/localization-check.js` charge la page en français, cherche automatiquement le
-bouton de changement de langue (repéré via le crawler, sur des mots-clés comme "arabe"), clique
-dessus, puis re-crawle la page en arabe et compare les deux états :
-
-1. **RTL appliqué ?** Vérifie que `dir="rtl"` (ou la direction calculée) est bien actif après
-   le passage en arabe.
-2. **Oubli de traduction ?** Associe les éléments FR/AR par leur sélecteur (stable d'une langue
-   à l'autre puisqu'il est basé sur la structure du DOM, pas sur le texte) et signale tout texte
-   strictement identique dans les deux langues — exactement le type de bug qu'on cherchait à
-   automatiser (cf. NOTIF-21).
-
-### Lancer la vérification
+Charge la page en français, trouve le bouton de langue (repéré via le crawler sur des
+mots-clés comme "arabe"), clique dessus, re-crawle en arabe et compare les deux états :
+`dir="rtl"` bien appliqué, et aucun texte resté identique dans les deux langues (oubli de
+traduction — cf. le bug NOTIF-21 qui a motivé cette vérification).
 
 ```bash
 npm run check-i18n -- https://staging.helpify.tn/auth/login
 ```
 
-Le rapport liste chaque problème trouvé (`rtl-not-applied`, `untranslated-text`) avec le
-sélecteur concerné.
+> Si le script ne trouve pas le bouton de langue, ajoute le libellé exact utilisé par le site à
+> `AR_TOGGLE_KEYWORDS` dans `localization-check.js`.
 
-> Si le script ne trouve pas le bouton de langue, le libellé exact utilisé sur Helpify n'est
-> peut-être pas dans la liste `AR_TOGGLE_KEYWORDS` (`localization-check.js`) — ajoute-le.
+## Tests
 
-## Prochaine étape
+```bash
+cd backend
+npm test
+```
 
-Le frontend React (dashboard, écrans de configuration/run/rapport, d'après les maquettes).
-=======
-# qa-ui-agent
->>>>>>> 6c1cf1dc6efe21da618926b804742cc01358842c
+`node:test` natif, aucune dépendance supplémentaire. Couvre les garde-fous de `planner.js`
+(sélecteur halluciné, incohérence `assert_enabled`, score de confiance, retry Groq) et
+`visual-diff.js` (comparaison identique/régression/dimensions différentes/scénarios non
+comparables).
+
+## Le frontend
+
+App React (Vite + Tailwind), thème sombre. Écrans principaux :
+
+- **Dashboard** — stats des runs récents (total/réussis/échoués/avertissements), filtres, bandeau
+  pipeline cliquable (Ticket → Explore → E2E → Diff → RTL).
+- **Explore** (`/explore`) — lance le crawl seul, affiche les éléments détectés avec leur
+  sélecteur et stratégie ; bouton pour passer directement à "New Test" avec l'URL pré-remplie.
+- **New Test** (`/new-run`) — configuration du run : URL, ticket, timeout, toggles RTL/diff
+  visuel.
+- **Live Run** (`/live-runs/:id`) — suivi en direct d'un run (captures d'écran réelles au fil de
+  l'exécution).
+- **Visual & RTL** (`/visual-rtl`) — comparateur de deux runs (côte à côte ou diff overlay) +
+  vérification i18n.
+- **Rapport** (`/reports/:id`) — résumé du ticket, score de confiance, étapes détaillées, bouton
+  "Relancer ce scénario", export PDF (`jspdf`, chargé en import dynamique pour ne pas alourdir le
+  bundle principal).
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Prochaines pistes
+
+- Support multi-page dans un scénario (naviguer vers une 2ᵉ URL en cours de route)
+- Historique du score de confiance dans le temps, par ticket

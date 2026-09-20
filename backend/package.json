@@ -11,7 +11,8 @@
     "compare": "node src/compare-runs.js",
     "check-i18n": "node src/check-i18n.js",
     "server": "node src/server.js",
-    "dev": "node src/server.js"
+    "dev": "node src/server.js",
+    "test": "node --test \"test/**/*.test.js\""
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -7,16 +7,21 @@ import { mkdir } from "fs/promises";
  * réussisse ou échoue, pour qu'on puisse visuellement rejouer le déroulé du test.
  *
  * Options :
- *  - runId      : identifiant du run (par défaut, le timestamp courant) ;
- *  - onProgress : callback appelé au fil de l'exécution, pour suivre le run en direct :
- *                   { type: "step_start", index, step }
- *                   { type: "step_end",   index, result }
+ *  - runId               : identifiant du run (par défaut, le timestamp courant) ;
+ *  - stepTimeoutMs        : délai max par action/vérification (défaut 10s) — à augmenter
+ *                           sur une page lente à répondre (staging chargé, réseau faible) ;
+ *  - navigationTimeoutMs  : délai max pour navigate/go_back (défaut 30s) ;
+ *  - onProgress           : callback appelé au fil de l'exécution, pour suivre le run en direct :
+ *                             { type: "step_start", index, step }
+ *                             { type: "step_end",   index, result }
  */
 export async function runScenario(url, scenario, options = {}) {
   const {
     headless = true,
     screenshotDir = "run-screenshots",
     runId = Date.now(),
+    stepTimeoutMs = 10000,
+    navigationTimeoutMs = 30000,
     onProgress,
   } = options;
 
@@ -55,7 +60,7 @@ export async function runScenario(url, scenario, options = {}) {
 
       const startedAt = Date.now();
       try {
-        await executeStep(page, url, step);
+        await executeStep(page, url, step, { stepTimeoutMs, navigationTimeoutMs });
       } catch (err) {
         stepResult.status = "failed";
         stepResult.error = err.message;
@@ -97,34 +102,36 @@ export async function runScenario(url, scenario, options = {}) {
   };
 }
 
-async function executeStep(page, baseUrl, step) {
+async function executeStep(page, baseUrl, step, timeouts) {
+  const { stepTimeoutMs, navigationTimeoutMs } = timeouts;
+
   switch (step.type) {
     case "navigate":
-      await page.goto(baseUrl, { waitUntil: "networkidle" });
+      await page.goto(baseUrl, { waitUntil: "networkidle", timeout: navigationTimeoutMs });
       return;
 
     case "go_back":
-      await page.goBack({ waitUntil: "networkidle" });
+      await page.goBack({ waitUntil: "networkidle", timeout: navigationTimeoutMs });
       return;
 
     case "click":
-      await page.locator(step.selector).click({ timeout: 10000 });
+      await page.locator(step.selector).click({ timeout: stepTimeoutMs });
       return;
 
     case "fill":
-      await page.locator(step.selector).fill(step.value ?? "", { timeout: 10000 });
+      await page.locator(step.selector).fill(step.value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "select":
-      await page.locator(step.selector).selectOption(step.value ?? "", { timeout: 10000 });
+      await page.locator(step.selector).selectOption(step.value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "assert_visible":
-      await page.locator(step.selector).waitFor({ state: "visible", timeout: 10000 });
+      await page.locator(step.selector).waitFor({ state: "visible", timeout: stepTimeoutMs });
       return;
 
     case "assert_enabled": {
-      await page.locator(step.selector).waitFor({ state: "visible", timeout: 10000 });
+      await page.locator(step.selector).waitFor({ state: "visible", timeout: stepTimeoutMs });
       const isDisabled = await page.locator(step.selector).evaluate((el) => {
         return (
           el.hasAttribute("disabled") ||
@@ -140,7 +147,7 @@ async function executeStep(page, baseUrl, step) {
 
     case "assert_text": {
       const locator = page.locator(step.selector);
-      await locator.waitFor({ state: "visible", timeout: 10000 });
+      await locator.waitFor({ state: "visible", timeout: stepTimeoutMs });
       const actualText = (await locator.innerText()).trim();
       if (!actualText.includes((step.value ?? "").trim())) {
         throw new Error(

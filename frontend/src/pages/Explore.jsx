@@ -138,9 +138,10 @@ export default function Explore() {
 
           <Link
             to="/new-run"
+            state={{ url }}
             className="border border-border rounded-xl py-3 text-text font-medium text-center flex items-center justify-center gap-2"
           >
-            Passer à la génération du scénario
+            Générer un scénario à partir de cette page
             <ArrowRight size={16} />
           </Link>
         </>

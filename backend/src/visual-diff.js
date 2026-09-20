@@ -16,7 +16,7 @@ async function loadPng(path) {
  * on ne peut pas comparer directement (ça arrive si la page a changé de mise
  * en page) — on le signale plutôt que de planter ou de mentir sur un résultat.
  */
-async function compareScreenshots(pathA, pathB, diffOutputPath) {
+export async function compareScreenshots(pathA, pathB, diffOutputPath) {
   const imgA = await loadPng(pathA);
   const imgB = await loadPng(pathB);
 
@@ -54,17 +54,38 @@ async function compareScreenshots(pathA, pathB, diffOutputPath) {
 
 /**
  * Compare deux runs sauvegardés (voir test-run.js) étape par étape, en supposant
- * qu'ils exécutent le même scénario (même nombre d'étapes, dans le même ordre).
+ * qu'ils exécutent le même scénario (même nombre d'étapes, dans le même ordre — c'est
+ * garanti par "Relancer ce scénario", mais PAS par deux appels séparés à /api/test-run,
+ * où l'IA peut générer un scénario différent d'une fois à l'autre).
  */
 export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
   await mkdir(outputDir, { recursive: true });
 
-  const stepCount = Math.min(runA.runResult.results.length, runB.runResult.results.length);
+  const totalStepsA = runA.runResult.results.length;
+  const totalStepsB = runB.runResult.results.length;
+  const stepCount = Math.min(totalStepsA, totalStepsB);
   const stepDiffs = [];
+  const warnings = [];
+
+  if (totalStepsA !== totalStepsB) {
+    warnings.push(
+      `Les deux runs n'ont pas le même nombre d'étapes (${totalStepsA} vs ${totalStepsB}) : ` +
+        `ce n'est probablement pas le même scénario. Seules les ${stepCount} premières étapes ` +
+        `communes sont comparées ci-dessous. Utilise "Relancer ce scénario" depuis un rapport ` +
+        `pour garantir deux runs strictement comparables.`
+    );
+  }
 
   for (let i = 0; i < stepCount; i++) {
     const stepA = runA.runResult.results[i];
     const stepB = runB.runResult.results[i];
+
+    if (stepA.description !== stepB.description) {
+      warnings.push(
+        `Étape ${i} : les descriptions diffèrent ("${stepA.description}" vs "${stepB.description}") — ` +
+          `probablement deux scénarios différents généré par l'IA, pas le même test rejoué.`
+      );
+    }
 
     if (!stepA.screenshot || !stepB.screenshot) {
       stepDiffs.push({
@@ -96,9 +117,11 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
     runIdA: runA.runResult.runId,
     runIdB: runB.runResult.runId,
     stepCount,
+    scenarioLengthMismatch: totalStepsA !== totalStepsB,
     regressionCount: regressions.length,
     hasRegressions: regressions.length > 0,
     maxDiffPercent,
+    warnings,
     steps: stepDiffs,
   };
 }

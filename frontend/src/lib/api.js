@@ -29,12 +29,12 @@ async function postJson(path, body) {
  * Démarre un run en arrière-plan. Répond tout de suite avec { runId } :
  * la progression se suit ensuite avec getRun(runId) (voir hooks/useRunPolling.js).
  */
-export function startTestRun({ url, ticketText }) {
-  return postJson("/api/test-run", { url, ticketText });
+export function startTestRun({ url, ticketText, timeoutMs }) {
+  return postJson("/api/test-run", { url, ticketText, timeoutMs });
 }
 
-export function crawlOnly({ url }) {
-  return postJson("/api/crawl", { url });
+export function crawlOnly({ url, timeoutMs }) {
+  return postJson("/api/crawl", { url, timeoutMs });
 }
 
 export function planOnly({ url, ticketText }) {

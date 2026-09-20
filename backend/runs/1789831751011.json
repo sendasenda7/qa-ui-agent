@@ -1,0 +1,84 @@
+{
+  "ticketText": "Vérifier la position du bouton de validation",
+  "scenario": {
+    "ticketSummary": "Vérifier la position du bouton de validation",
+    "warnings": [
+      "Le ticket demande de vérifier la position du bouton de validation, mais aucune étape de vérification de position n'est disponible avec les types d'étapes fournis."
+    ],
+    "steps": [
+      {
+        "type": "navigate",
+        "selector": null,
+        "value": null,
+        "description": "Ouvrir la page de connexion",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": null,
+        "description": "Vérifier que le bouton Continuer est visible",
+        "selectorValid": true
+      },
+      {
+        "type": "assert_text",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "value": "Continuer",
+        "description": "Vérifier le texte du bouton de validation",
+        "selectorValid": true
+      }
+    ],
+    "confidence": 85
+  },
+  "runResult": {
+    "runId": 1789831751011,
+    "url": "https://staging.helpify.tn/auth/login",
+    "startedAt": "2026-09-19T15:29:11.011Z",
+    "finishedAt": "2026-09-19T15:29:33.097Z",
+    "status": "passed",
+    "phase": "done",
+    "stepsTotal": 3,
+    "stepsRun": 3,
+    "stepsPassed": 3,
+    "currentStep": null,
+    "results": [
+      {
+        "index": 0,
+        "type": "navigate",
+        "description": "Ouvrir la page de connexion",
+        "selector": null,
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789831751011-step0-navigate.png",
+        "durationMs": 2077
+      },
+      {
+        "index": 1,
+        "type": "assert_visible",
+        "description": "Vérifier que le bouton Continuer est visible",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789831751011-step1-assert_visible.png",
+        "durationMs": 114
+      },
+      {
+        "index": 2,
+        "type": "assert_text",
+        "description": "Vérifier le texte du bouton de validation",
+        "selector": "app-role-selector:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > a:nth-of-type(1)",
+        "status": "passed",
+        "error": null,
+        "screenshot": "run-screenshots/1789831751011-step2-assert_text.png",
+        "durationMs": 60
+      }
+    ],
+    "crawl": {
+      "title": "Helpify",
+      "elementCount": 16,
+      "durationMs": 12093,
+      "screenshotPath": "debug-screenshots/1789831764120.png"
+    },
+    "error": null
+  }
+}

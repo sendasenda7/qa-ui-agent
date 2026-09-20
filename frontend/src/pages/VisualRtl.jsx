@@ -215,6 +215,16 @@ function VisualDiffTab() {
 
       {report && (
         <>
+          {report.warnings?.length > 0 && (
+            <div className="bg-warning-muted border border-warning/30 rounded-xl p-3 flex flex-col gap-1">
+              {report.warnings.map((w, i) => (
+                <span key={i} className="text-xs text-warning">
+                  ⚠ {w}
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-1">
               <span className="text-xs text-text-muted">Delta visuel max</span>

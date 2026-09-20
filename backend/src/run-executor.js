@@ -55,7 +55,7 @@ function makeRunResult(runId, url, phase) {
  * général `runScenario`) en suivant sa progression, puis marque le run terminé.
  * Partagé par startRun (scénario généré par l'IA) et startReplay (scénario réutilisé).
  */
-async function executeAndTrack(runId, state, url, scenario, run) {
+async function executeAndTrack(runId, state, url, scenario, run, timeoutMs) {
   activeRunIds.add(runId);
 
   let writeQueue = Promise.resolve();
@@ -92,7 +92,11 @@ async function executeAndTrack(runId, state, url, scenario, run) {
     runResult.phase = "running";
     await persist();
 
-    const finalResult = await run(url, scenario, { runId, onProgress: handleProgress });
+    const finalResult = await run(url, scenario, {
+      runId,
+      onProgress: handleProgress,
+      stepTimeoutMs: timeoutMs,
+    });
     runResult.status = finalResult.status;
     runResult.stepsTotal = finalResult.stepsTotal;
     runResult.stepsRun = finalResult.stepsRun;
@@ -118,7 +122,7 @@ async function executeAndTrack(runId, state, url, scenario, run) {
  *
  * `deps` permet d'injecter de fausses implémentations (crawl, plan, run) dans les tests.
  */
-export async function startRun({ url, ticketText }, deps = {}) {
+export async function startRun({ url, ticketText, timeoutMs }, deps = {}) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
 
   const runId = nextRunId();
@@ -138,7 +142,7 @@ export async function startRun({ url, ticketText }, deps = {}) {
 
   async function execute() {
     try {
-      const crawlResult = await crawl(url);
+      const crawlResult = await crawl(url, { navigationTimeoutMs: timeoutMs });
       runResult.crawl = {
         title: crawlResult.title,
         elementCount: crawlResult.elementCount,
@@ -157,7 +161,7 @@ export async function startRun({ url, ticketText }, deps = {}) {
       }
       state.scenario = scenario;
       activeRunIds.delete(runId); // executeAndTrack le rajoute ; évite un double comptage.
-      await executeAndTrack(runId, state, url, scenario, run);
+      await executeAndTrack(runId, state, url, scenario, run, timeoutMs);
     } catch (err) {
       console.error(`[run ${runId}] erreur :`, err.message);
       runResult.status = "error";

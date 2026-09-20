@@ -1,6 +1,31 @@
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
+// Statuts HTTP considérés comme transitoires : ça vaut le coup de réessayer.
+// 429 = rate limit, 5xx = problème temporaire côté Groq. Tout le reste (401, 400...)
+// est une erreur durable — réessayer ne changerait rien, donc on ne retente jamais 4xx
+// en dehors de 429.
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+const BASE_DELAY_MS = 500;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Calcule le délai avant la prochaine tentative. Respecte l'en-tête Retry-After
+ * si Groq le fournit (typiquement sur un 429) ; sinon backoff exponentiel simple.
+ */
+function retryDelayMs(attempt, response) {
+  const retryAfterHeader = response?.headers?.get?.("retry-after");
+  const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    return retryAfterSeconds * 1000;
+  }
+  return BASE_DELAY_MS * 2 ** attempt;
+}
+
 const STEP_TYPES = [
   "navigate",
   "click",
@@ -79,6 +104,52 @@ ${JSON.stringify(simplifiedElements, null, 2)}`;
 }
 
 /**
+ * Appelle Groq avec retry sur les erreurs transitoires (429, 5xx, coupure réseau).
+ * Ne retente jamais une erreur "durable" (401 clé invalide, 400 requête malformée...) :
+ * ça échouerait de la même façon à chaque tentative, autant échouer vite et clairement.
+ */
+export async function callGroqWithRetry(apiKey, body) {
+  let lastError;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    let response;
+    try {
+      response = await fetch(GROQ_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (networkErr) {
+      // fetch qui rejette (DNS, timeout, coupure réseau...) : c'est bien souvent transitoire.
+      lastError = new Error(`Erreur réseau vers Groq : ${networkErr.message}`);
+      if (attempt < MAX_ATTEMPTS - 1) {
+        await sleep(retryDelayMs(attempt, null));
+        continue;
+      }
+      throw lastError;
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    const errorBody = await response.text();
+    lastError = new Error(`Erreur API Groq (${response.status}) : ${errorBody}`);
+
+    const isRetryable = RETRYABLE_STATUSES.has(response.status);
+    if (!isRetryable || attempt === MAX_ATTEMPTS - 1) {
+      throw lastError;
+    }
+    await sleep(retryDelayMs(attempt, response));
+  }
+
+  throw lastError;
+}
+
+/**
  * Appelle Groq et génère un scénario de test structuré à partir d'un ticket
  * et du résultat d'un crawl (voir crawler.js).
  */
@@ -90,27 +161,15 @@ export async function generateScenario(ticketText, crawlResult) {
     );
   }
 
-  const response = await fetch(GROQ_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: buildSystemPrompt() },
-        { role: "user", content: buildUserPrompt(ticketText, crawlResult) },
-      ],
-    }),
+  const response = await callGroqWithRetry(apiKey, {
+    model: GROQ_MODEL,
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: buildUserPrompt(ticketText, crawlResult) },
+    ],
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Erreur API Groq (${response.status}) : ${errorBody}`);
-  }
 
   const data = await response.json();
   const rawContent = data.choices?.[0]?.message?.content;
@@ -127,30 +186,67 @@ export async function generateScenario(ticketText, crawlResult) {
     );
   }
 
+  if (typeof scenario !== "object" || scenario === null || Array.isArray(scenario)) {
+    throw new Error(
+      "L'IA n'a pas renvoyé un objet JSON (attendu : { ticketSummary, warnings, steps }). Réponse brute : " +
+        rawContent
+    );
+  }
+
   return validateScenario(scenario, crawlResult);
 }
 
 /**
- * Garde-fou anti-hallucination : vérifie que chaque sélecteur utilisé par l'IA
- * existe réellement dans la liste des éléments crawlés. Un scénario qui pointe
- * vers un sélecteur inventé est plus dangereux qu'un scénario incomplet.
+ * Garde-fou anti-hallucination + validation structurelle : vérifie que chaque
+ * sélecteur utilisé par l'IA existe réellement dans la liste des éléments crawlés,
+ * ET que la réponse de l'IA a globalement la forme attendue (l'IA peut renvoyer un
+ * JSON syntaxiquement valide mais structurellement n'importe quoi : "steps" qui
+ * n'est pas un tableau, un type d'étape halluciné qui n'existe pas dans STEP_TYPES,
+ * une étape qui n'est même pas un objet...). Un scénario mal formé est plus
+ * dangereux qu'un scénario incomplet : il vaut mieux le nettoyer ici, avec un
+ * avertissement clair, que le laisser planter plus tard dans runner.js avec un
+ * message moins parlant pour l'utilisateur.
  */
-function validateScenario(scenario, crawlResult) {
+export function validateScenario(scenario, crawlResult) {
   const knownSelectors = new Set(crawlResult.elements.map((el) => el.selector));
   const validationWarnings = [...(scenario.warnings || [])];
 
-  const withSelectorCheck = (scenario.steps || []).map((step) => {
+  if (!Array.isArray(scenario.steps)) {
+    validationWarnings.push(
+      `L'IA n'a pas renvoyé un tableau d'étapes valide (reçu : ${typeof scenario.steps}).`
+    );
+  }
+  const rawSteps = Array.isArray(scenario.steps) ? scenario.steps : [];
+
+  const wellFormedSteps = rawSteps.filter((step, index) => {
+    if (typeof step !== "object" || step === null) {
+      validationWarnings.push(`Étape ${index} ignorée : ce n'est pas un objet valide.`);
+      return false;
+    }
+    if (!STEP_TYPES.includes(step.type)) {
+      validationWarnings.push(
+        `Étape ${index} ignorée : type d'étape inconnu "${step.type}" (attendu : ${STEP_TYPES.join(", ")}).`
+      );
+      return false;
+    }
+    return true;
+  });
+
+  const withSelectorCheck = wellFormedSteps.map((step) => {
     const needsSelector = !["navigate", "go_back"].includes(step.type);
     const selectorIsValid = !needsSelector || knownSelectors.has(step.selector);
+    const description = step.description || "(étape sans description)";
 
     if (needsSelector && !selectorIsValid) {
+      const selectorLabel = step.selector ? `"${step.selector}"` : "manquant";
       validationWarnings.push(
-        `Sélecteur halluciné détecté et neutralisé : "${step.selector}" (étape "${step.description}")`
+        `Sélecteur halluciné détecté et neutralisé : ${selectorLabel} (étape "${description}")`
       );
     }
 
     return {
       ...step,
+      description,
       selectorValid: selectorIsValid,
     };
   });

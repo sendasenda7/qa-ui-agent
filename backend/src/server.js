@@ -48,14 +48,31 @@ function isHttpUrl(value) {
   }
 }
 
+// Timeouts par défaut (ms) et bornes acceptées côté API. Le crawl (chargement de page)
+// et les étapes d'un scénario (clic, saisie...) n'ont pas le même défaut : le premier
+// attend un chargement de page complet, les secondes une simple interaction.
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 30000;
+const DEFAULT_STEP_TIMEOUT_MS = 10000;
+const MIN_TIMEOUT_MS = 3000;
+const MAX_TIMEOUT_MS = 120000;
+
+/** Valide et borne un timeoutMs fourni par le client ; renvoie `fallback` si absent/invalide. */
+function parseTimeoutMs(value, fallback) {
+  const n = Number(value);
+  if (!value || !Number.isFinite(n)) return fallback;
+  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, n));
+}
+
 // Étape 1-2 : crawl seul (utile pour l'écran "Explore").
 app.post(
   "/api/crawl",
   asyncRoute(async (req, res) => {
-    const { url } = req.body;
+    const { url, timeoutMs } = req.body;
     if (!url) return res.status(400).json({ error: "url manquante" });
 
-    const crawlResult = await crawlPage(url);
+    const crawlResult = await crawlPage(url, {
+      navigationTimeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_NAVIGATION_TIMEOUT_MS),
+    });
     res.json(crawlResult);
   })
 );
@@ -64,12 +81,14 @@ app.post(
 app.post(
   "/api/plan",
   asyncRoute(async (req, res) => {
-    const { url, ticketText } = req.body;
+    const { url, ticketText, timeoutMs } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
 
-    const crawlResult = await crawlPage(url);
+    const crawlResult = await crawlPage(url, {
+      navigationTimeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_NAVIGATION_TIMEOUT_MS),
+    });
     const scenario = await generateScenario(ticketText, crawlResult);
     res.json({ crawlResult, scenario });
   })
@@ -81,7 +100,7 @@ app.post(
 app.post(
   "/api/test-run",
   asyncRoute(async (req, res) => {
-    const { url, ticketText } = req.body;
+    const { url, ticketText, timeoutMs } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
@@ -94,7 +113,11 @@ app.post(
       });
     }
 
-    const { runId } = await startRun({ url, ticketText });
+    const { runId } = await startRun({
+      url,
+      ticketText,
+      timeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_STEP_TIMEOUT_MS),
+    });
     res.status(202).json({ runId });
   })
 );

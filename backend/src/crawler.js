@@ -157,8 +157,13 @@ export function buildSelectorInBrowser() {
 /**
  * Crawle une URL et retourne la liste des éléments interactifs détectés,
  * avec le sélecteur le plus stable trouvé pour chacun.
+ *
+ * Options :
+ *  - navigationTimeoutMs : délai max pour le chargement initial de la page (défaut 30s) —
+ *    à augmenter sur un environnement de staging plus lent que la prod.
  */
-export async function crawlPage(url) {
+export async function crawlPage(url, options = {}) {
+  const { navigationTimeoutMs = 30000 } = options;
   const browser = await chromium.launch();
 
   // try/finally : si la page est injoignable (timeout, DNS...), on ferme quand même
@@ -167,7 +172,7 @@ export async function crawlPage(url) {
     const page = await browser.newPage();
 
     const startedAt = Date.now();
-    await page.goto(url, { waitUntil: "networkidle" });
+    await page.goto(url, { waitUntil: "networkidle", timeout: navigationTimeoutMs });
     const title = await page.title();
 
     // Les applis SPA (Angular, React...) affichent parfois le contenu principal

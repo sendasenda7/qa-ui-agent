@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
-import { Loader2, Sparkles, ArrowLeft, RotateCw } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
@@ -13,6 +13,7 @@ export default function ReportDetail() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [replaying, setReplaying] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     getRun(id)
@@ -28,6 +29,18 @@ export default function ReportDetail() {
     } catch (err) {
       setError(err.message);
       setReplaying(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      const { exportRunReportToPdf } = await import("../lib/pdf-export.js");
+      await exportRunReportToPdf(data);
+    } catch (err) {
+      setError(`Export PDF impossible : ${err.message}`);
+    } finally {
+      setExportingPdf(false);
     }
   }
 
@@ -79,19 +92,35 @@ export default function ReportDetail() {
         Retour aux rapports
       </Link>
 
-      <button
-        type="button"
-        onClick={handleReplay}
-        disabled={replaying}
-        className="self-start flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface disabled:opacity-60"
-      >
-        {replaying ? (
-          <Loader2 size={13} className="animate-spin" />
-        ) : (
-          <RotateCw size={13} />
-        )}
-        {replaying ? "Lancement..." : "Relancer ce scénario"}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleReplay}
+          disabled={replaying}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface disabled:opacity-60"
+        >
+          {replaying ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <RotateCw size={13} />
+          )}
+          {replaying ? "Lancement..." : "Relancer ce scénario"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleExportPdf}
+          disabled={exportingPdf}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface disabled:opacity-60"
+        >
+          {exportingPdf ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <FileDown size={13} />
+          )}
+          {exportingPdf ? "Génération..." : "Exporter en PDF"}
+        </button>
+      </div>
 
       <header className="flex flex-col gap-2">
         <div className="flex items-center justify-between">

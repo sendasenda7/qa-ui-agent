@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2 } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
@@ -15,11 +15,15 @@ const BROWSER_ENGINES = ["Chromium", "Firefox", "WebKit"];
 
 export default function NewRun() {
   const navigate = useNavigate();
-  const [url, setUrl] = useState("https://staging.helpify.tn/auth/login");
+  const location = useLocation();
+  const [url, setUrl] = useState(
+    location.state?.url || "https://staging.helpify.tn/auth/login"
+  );
   const [ticketText, setTicketText] = useState("");
   const [browserEngine, setBrowserEngine] = useState("Chromium");
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
+  const [timeoutMs, setTimeoutMs] = useState(10000);
 
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState(null);
@@ -30,7 +34,7 @@ export default function NewRun() {
     setIsStarting(true);
     setError(null);
     try {
-      const { runId } = await startTestRun({ url, ticketText });
+      const { runId } = await startTestRun({ url, ticketText, timeoutMs });
       navigate(`/live-runs/${runId}`);
     } catch (err) {
       setError(err.message);
@@ -127,6 +131,26 @@ export default function NewRun() {
               Seul Chromium est branché sur le backend pour l'instant.
             </span>
           )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="timeout-ms" className="text-sm">
+            Timeout par étape (ms)
+          </label>
+          <input
+            id="timeout-ms"
+            type="number"
+            min={3000}
+            max={120000}
+            step={1000}
+            value={timeoutMs}
+            onChange={(e) => setTimeoutMs(e.target.value)}
+            className="bg-surface-raised border border-border rounded-lg px-3 py-2 text-sm font-mono w-32"
+          />
+          <span className="text-[11px] text-text-faint">
+            À augmenter si l'environnement de staging répond lentement (défaut : 10000ms,
+            borné entre 3000 et 120000).
+          </span>
         </div>
 
         <div className="flex items-center justify-between gap-3">
