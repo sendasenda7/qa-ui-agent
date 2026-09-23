@@ -9,6 +9,7 @@ import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { startRun, startReplay, getActiveRunCount } from "./run-executor.js";
 import { listRuns, readRun, saveRun, recoverInterruptedRuns } from "./run-store.js";
+import { checkPassword, issueToken, requireAuth } from "./auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -19,6 +20,25 @@ const MAX_CONCURRENT_RUNS = Number(process.env.MAX_CONCURRENT_RUNS) || 2;
 
 app.use(cors());
 app.use(express.json());
+
+// Connexion : seule route (avec /api/health) accessible sans token.
+app.post("/api/login", (req, res) => {
+  const { password } = req.body;
+  try {
+    if (!checkPassword(password)) {
+      return res.status(401).json({ error: "Mot de passe incorrect" });
+    }
+    res.json({ token: issueToken() });
+  } catch (err) {
+    // AUTH_PASSWORD / JWT_SECRET manquant côté serveur — erreur de config, pas de l'utilisateur.
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+// Tout ce qui suit exige un token valide (Authorization: Bearer <token>).
+app.use("/api", requireAuth);
 
 // Permet au frontend d'afficher les screenshots générés (<img src="/screenshots/...">).
 app.use("/screenshots", express.static("run-screenshots"));
@@ -220,8 +240,6 @@ app.post(
     res.json(diffReport);
   })
 );
-
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
 // Les runs restés "running" sur disque après un arrêt brutal sont marqués en erreur.
 try {

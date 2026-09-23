@@ -69,7 +69,7 @@ export default function Dashboard() {
         <PipelineStrip />
         <Link
           to="/new-run"
-          className="gradient-accent rounded-xl px-4 py-2.5 flex items-center justify-between text-white text-sm font-medium"
+          className="gradient-accent rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-white text-sm font-medium w-full sm:w-auto sm:self-end"
         >
           Nouveau test
           <ArrowRight size={16} />
@@ -93,7 +93,7 @@ export default function Dashboard() {
       )}
 
       {stats && (
-        <section className="grid grid-cols-2 gap-3">
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Tests totaux" value={stats.total} />
           <StatCard
             label="Réussis"
@@ -121,34 +121,36 @@ export default function Dashboard() {
             <h2 className="text-sm font-medium text-text-muted">Runs récents</h2>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
-            {FILTERS.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setFilter(key)}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
-                  filter === key
-                    ? "gradient-accent text-white"
-                    : "bg-surface-raised text-text-muted border border-border"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {runs.length > 0 && (
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Rechercher par ticket ou URL..."
-                className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none focus:border-accent-blue"
-              />
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-none">
+              {FILTERS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(key)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap transition-colors ${
+                    filter === key
+                      ? "gradient-accent text-white"
+                      : "bg-surface-raised text-text-muted border border-border"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
+
+            {runs.length > 0 && (
+              <div className="relative md:w-72 shrink-0">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Rechercher par ticket ou URL..."
+                  className="w-full bg-surface-raised border border-border rounded-lg pl-9 pr-3 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none focus:border-accent-blue"
+                />
+              </div>
+            )}
+          </div>
 
           {visibleRuns.length === 0 ? (
             <p className="text-sm text-text-faint">

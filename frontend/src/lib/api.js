@@ -1,23 +1,46 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const TOKEN_KEY = "qa-ui-agent-token";
 
-async function getJson(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`);
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(data?.error || `Erreur API (${response.status})`);
-  }
-  return data;
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-async function postJson(path, body) {
+function setToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Quand une requête renvoie 401 (token absent/expiré), on prévient le reste de
+ * l'appli via cet évènement plutôt que de rediriger ici — App.jsx l'écoute et
+ * bascule sur l'écran de connexion, peu importe quel appel a échoué.
+ */
+function notifyUnauthorized() {
+  clearToken();
+  window.dispatchEvent(new Event("qa-ui-agent:unauthorized"));
+}
+
+async function request(path, { method = "GET", body } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
   const data = await response.json().catch(() => null);
 
+  if (response.status === 401) {
+    notifyUnauthorized();
+    throw new Error(data?.error || "Authentification requise");
+  }
+
   if (!response.ok) {
     throw new Error(data?.error || `Erreur API (${response.status})`);
   }
@@ -25,20 +48,22 @@ async function postJson(path, body) {
   return data;
 }
 
-async function patchJson(path, body) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+const getJson = (path) => request(path);
+const postJson = (path, body) => request(path, { method: "POST", body });
+const patchJson = (path, body) => request(path, { method: "PATCH", body });
 
-  const data = await response.json().catch(() => null);
+/** Connexion : mot de passe d'équipe → token stocké pour les appels suivants. */
+export async function login(password) {
+  const { token } = await postJson("/api/login", { password });
+  setToken(token);
+}
 
-  if (!response.ok) {
-    throw new Error(data?.error || `Erreur API (${response.status})`);
-  }
+export function logout() {
+  clearToken();
+}
 
-  return data;
+export function isLoggedIn() {
+  return !!getToken();
 }
 
 /**
