@@ -9,7 +9,7 @@ import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { startRun, startReplay, getActiveRunCount } from "./run-executor.js";
 import { listRuns, readRun, saveRun, recoverInterruptedRuns } from "./run-store.js";
-import { checkPassword, issueToken, requireAuth } from "./auth.js";
+import { checkPassword, issueToken, requireAuth, rateLimitLogin } from "./auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -22,12 +22,15 @@ app.use(cors());
 app.use(express.json());
 
 // Connexion : seule route (avec /api/health) accessible sans token.
-app.post("/api/login", (req, res) => {
+// rateLimitLogin bloque une IP après plusieurs mots de passe erronés d'affilée.
+app.post("/api/login", rateLimitLogin, (req, res) => {
   const { password } = req.body;
   try {
     if (!checkPassword(password)) {
+      req.recordLoginFailure();
       return res.status(401).json({ error: "Mot de passe incorrect" });
     }
+    req.recordLoginSuccess();
     res.json({ token: issueToken() });
   } catch (err) {
     // AUTH_PASSWORD / JWT_SECRET manquant côté serveur — erreur de config, pas de l'utilisateur.
