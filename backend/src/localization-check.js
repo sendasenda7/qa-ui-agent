@@ -31,40 +31,45 @@ async function readPageLocalizationState(page) {
  */
 export async function checkLocalization(url) {
   const browser = await chromium.launch();
-  const page = await browser.newPage();
 
-  await page.goto(url, { waitUntil: "networkidle" });
-  await page
-    .waitForSelector("input, textarea, select, button, a", { timeout: 5000 })
-    .catch(() => {});
+  // try/finally : quelle que soit l'étape qui échoue (page injoignable, bouton de bascule
+  // devenu introuvable, sélecteur périmé...), Chromium doit toujours être fermé. Sans ça,
+  // chaque échec sur l'écran Visual/RTL laisse un processus orphelin (même bug que crawler.js).
+  try {
+    const page = await browser.newPage();
 
-  const frElements = await page.evaluate(buildSelectorInBrowser);
-  const frState = await readPageLocalizationState(page);
+    await page.goto(url, { waitUntil: "networkidle" });
+    await page
+      .waitForSelector("input, textarea, select, button, a", { timeout: 5000 })
+      .catch(() => {});
 
-  const toggle = findArabicToggle(frElements);
-  if (!toggle) {
-    await browser.close();
-    throw new Error(
-      "Aucun bouton de changement de langue vers l'arabe détecté parmi les éléments crawlés. " +
-        "Vérifie manuellement le libellé utilisé sur le site et ajuste AR_TOGGLE_KEYWORDS si besoin."
+    const frElements = await page.evaluate(buildSelectorInBrowser);
+    const frState = await readPageLocalizationState(page);
+
+    const toggle = findArabicToggle(frElements);
+    if (!toggle) {
+      throw new Error(
+        "Aucun bouton de changement de langue vers l'arabe détecté parmi les éléments crawlés. " +
+          "Vérifie manuellement le libellé utilisé sur le site et ajuste AR_TOGGLE_KEYWORDS si besoin."
+      );
+    }
+
+    await page.locator(toggle.selector).click();
+    // Un changement de langue Angular ne déclenche pas forcément de nouvelle requête réseau
+    // (souvent un simple re-rendu côté client) : on attend un court instant fixe plutôt
+    // que "networkidle", qui ne se déclencherait pas ici.
+    await page.waitForTimeout(800);
+
+    const arElements = await page.evaluate(buildSelectorInBrowser);
+    const arState = await readPageLocalizationState(page);
+
+    return compareLocalization(
+      { url, elements: frElements, ...frState },
+      { elements: arElements, ...arState }
     );
+  } finally {
+    await browser.close();
   }
-
-  await page.locator(toggle.selector).click();
-  // Un changement de langue Angular ne déclenche pas forcément de nouvelle requête réseau
-  // (souvent un simple re-rendu côté client) : on attend un court instant fixe plutôt
-  // que "networkidle", qui ne se déclencherait pas ici.
-  await page.waitForTimeout(800);
-
-  const arElements = await page.evaluate(buildSelectorInBrowser);
-  const arState = await readPageLocalizationState(page);
-
-  await browser.close();
-
-  return compareLocalization(
-    { url, elements: frElements, ...frState },
-    { elements: arElements, ...arState }
-  );
 }
 
 function compareLocalization(fr, ar) {

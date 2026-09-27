@@ -37,13 +37,17 @@ app.post("/api/login", (req, res) => {
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Tout ce qui suit exige un token valide (Authorization: Bearer <token>).
+// Tout ce qui suit exige un token valide (Authorization: Bearer <token>, ou ?token=
+// pour les fichiers statiques ci-dessous — voir le commentaire dans auth.js).
 app.use("/api", requireAuth);
 
-// Permet au frontend d'afficher les screenshots générés (<img src="/screenshots/...">).
-app.use("/screenshots", express.static("run-screenshots"));
-app.use("/debug-screenshots", express.static("debug-screenshots"));
-app.use("/diff-screenshots", express.static("diff-screenshots"));
+// Permet au frontend d'afficher les screenshots générés (<img src="/screenshots/...?token=...">).
+// Protégées par requireAuth : sans ça, n'importe qui connaissant/devinant une URL de capture
+// pouvait la voir sans mot de passe, alors que tout le reste de l'API est protégé — sensible ici,
+// puisque ces captures viennent de staging.helpify.tn et peuvent contenir des données réelles.
+app.use("/screenshots", requireAuth, express.static("run-screenshots"));
+app.use("/debug-screenshots", requireAuth, express.static("debug-screenshots"));
+app.use("/diff-screenshots", requireAuth, express.static("diff-screenshots"));
 
 /**
  * Enveloppe une route async pour transmettre proprement les erreurs à Express,

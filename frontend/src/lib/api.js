@@ -116,9 +116,17 @@ export function replayRun(id) {
 /**
  * Construit l'URL complète d'un fichier statique renvoyé par le backend
  * (chemins relatifs type "run-screenshots/xxx.png" ou "diff-screenshots/xxx.png").
+ *
+ * Ces routes exigent désormais un token (voir backend/src/server.js) : comme une balise
+ * <img src="..."> ne peut pas envoyer de header Authorization, le token est passé en
+ * paramètre d'URL. Si personne n'est connecté, on renvoie null plutôt qu'une URL qui
+ * échouerait de toute façon en 401 (évite une icône d'image cassée après déconnexion).
  */
 export function screenshotUrl(relativePath) {
   if (!relativePath) return null;
+  const token = getToken();
+  if (!token) return null;
+
   const cleaned = relativePath.replace(/^run-screenshots\//, "screenshots/");
-  return `${API_BASE_URL}/${cleaned}`;
+  return `${API_BASE_URL}/${cleaned}?token=${encodeURIComponent(token)}`;
 }
