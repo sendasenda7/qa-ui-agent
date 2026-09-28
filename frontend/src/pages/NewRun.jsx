@@ -36,7 +36,15 @@ export default function NewRun() {
     setIsStarting(true);
     setError(null);
     try {
-      const { runId } = await startTestRun({ url, ticketText, timeoutMs, ticketUrl, deepReview });
+      const { runId } = await startTestRun({
+        url,
+        ticketText,
+        timeoutMs,
+        ticketUrl,
+        deepReview,
+        checkRtl,
+        checkVisualDiff,
+      });
       navigate(`/live-runs/${runId}`);
     } catch (err) {
       setError(err.message);

@@ -11,7 +11,7 @@ import { useNow } from "../hooks/useNow.js";
 import { formatClock } from "../lib/format.js";
 
 // Étape du bandeau Ticket → Explore → AI Plan → Run → Regressions → Report.
-const PIPELINE_STEP_BY_PHASE = { crawling: 2, planning: 3, running: 4 };
+const PIPELINE_STEP_BY_PHASE = { crawling: 2, planning: 3, running: 4, analyzing: 5 };
 
 function getElapsedMs(runResult, now) {
   const startMs = Date.parse(runResult.startedAt);
@@ -118,7 +118,7 @@ export default function LiveRunDetail() {
         />
       </section>
 
-      <PhaseTimeline run={runResult} />
+      <PhaseTimeline run={runResult} options={data.options} />
 
       {runResult.error && (
         <div className="bg-danger-muted border border-danger/30 text-danger text-sm rounded-xl p-3">

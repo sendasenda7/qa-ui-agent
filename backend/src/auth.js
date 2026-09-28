@@ -94,7 +94,6 @@ export function rateLimitLogin(req, res, next) {
   next();
 }
 
-
 /**
  * Récupère le token envoyé par le client, sous l'une des deux formes possibles :
  *  - header "Authorization: Bearer <token>" (tous les appels à l'API, via lib/api.js) ;

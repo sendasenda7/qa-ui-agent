@@ -2,6 +2,7 @@ import { crawlPage } from "./crawler.js";
 import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
+import { needsAnalysis, runAnalysis } from "./run-analysis.js";
 
 /**
  * Orchestre un run complet EN ARRIÈRE-PLAN : crawl → scénario IA → exécution.
@@ -9,7 +10,9 @@ import { saveRun, readRun } from "./run-store.js";
  * Le run est écrit sur disque dès sa création puis après chaque changement de phase
  * et chaque étape. Le frontend n'a qu'à relire GET /api/runs/:id pour suivre la progression.
  *
- * Phases (runResult.phase) : "crawling" → "planning" → "running" → "done" | "error".
+ * Phases (runResult.phase) : "crawling" → "planning" → "running" → ("analyzing") → "done" | "error".
+ *   "analyzing" n'existe que si l'utilisateur a activé l'analyse RTL et/ou le diff visuel
+ *   (state.options) : voir run-analysis.js.
  * Statuts (runResult.status) : "running" → "passed" | "failed" | "error".
  *   - "failed" = une étape du scénario a échoué (résultat de test normal) ;
  *   - "error"  = le pipeline lui-même a planté (site injoignable, clé Groq manquante...).
@@ -55,7 +58,7 @@ function makeRunResult(runId, url, phase) {
  * général `runScenario`) en suivant sa progression, puis marque le run terminé.
  * Partagé par startRun (scénario généré par l'IA) et startReplay (scénario réutilisé).
  */
-async function executeAndTrack(runId, state, url, scenario, run, timeoutMs) {
+async function executeAndTrack(runId, state, url, scenario, run, timeoutMs, analysisDeps = {}) {
   activeRunIds.add(runId);
 
   let writeQueue = Promise.resolve();
@@ -97,11 +100,22 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs) {
       onProgress: handleProgress,
       stepTimeoutMs: timeoutMs,
     });
-    runResult.status = finalResult.status;
     runResult.stepsTotal = finalResult.stepsTotal;
     runResult.stepsRun = finalResult.stepsRun;
     runResult.stepsPassed = finalResult.stepsPassed;
     runResult.results = finalResult.results;
+
+    // Analyses optionnelles (RTL, diff visuel). Le statut reste "running" pendant toute
+    // l'analyse : le frontend arrête de relire un run dès qu'il n'est plus "running", il
+    // afficherait donc "terminé" avant l'arrivée des résultats. Les analyses, elles, ne
+    // changent jamais le statut final (voir run-analysis.js).
+    if (needsAnalysis(state.options)) {
+      runResult.phase = "analyzing";
+      runResult.currentStep = null;
+      await persist();
+      await runAnalysis(state, persist, analysisDeps);
+    }
+    runResult.status = finalResult.status;
     runResult.phase = "done";
   } catch (err) {
     console.error(`[run ${runId}] erreur :`, err.message);
@@ -123,7 +137,15 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs) {
  * `deps` permet d'injecter de fausses implémentations (crawl, plan, run) dans les tests.
  */
 export async function startRun(
-  { url, ticketText, timeoutMs, ticketUrl = null, deepReview = false },
+  {
+    url,
+    ticketText,
+    timeoutMs,
+    ticketUrl = null,
+    deepReview = false,
+    checkRtl = false,
+    checkVisualDiff = false,
+  },
   deps = {}
 ) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
@@ -132,6 +154,8 @@ export async function startRun(
   const state = {
     ticketText,
     ticketUrl,
+    // Analyses demandées sur l'écran "New Run" (voir run-analysis.js).
+    options: { checkRtl, checkVisualDiff },
     // Provisoire : remplacé par le vrai scénario une fois généré par l'IA.
     scenario: { ticketSummary: truncate(ticketText), warnings: [], steps: [] },
     runResult: makeRunResult(runId, url, "crawling"),
@@ -165,7 +189,7 @@ export async function startRun(
       }
       state.scenario = scenario;
       activeRunIds.delete(runId); // executeAndTrack le rajoute ; évite un double comptage.
-      await executeAndTrack(runId, state, url, scenario, run, timeoutMs);
+      await executeAndTrack(runId, state, url, scenario, run, timeoutMs, deps);
     } catch (err) {
       console.error(`[run ${runId}] erreur :`, err.message);
       runResult.status = "error";
@@ -205,11 +229,17 @@ export async function startReplay(sourceRunId, deps = {}) {
   const state = {
     ticketText: source.ticketText,
     ticketUrl: source.ticketUrl ?? null,
+    // Un rejeu existe pour être comparé au run d'origine : le diff visuel est donc toujours
+    // activé (même scénario = comparaison fiable). L'analyse RTL suit le choix du run d'origine.
+    options: { checkRtl: Boolean(source.options?.checkRtl), checkVisualDiff: true },
     scenario,
     runResult: { ...makeRunResult(runId, sourceRunResult.url, "running"), replayOf: sourceRunId },
   };
 
   await saveRun(runId, state);
 
-  return { runId, done: executeAndTrack(runId, state, sourceRunResult.url, scenario, run) };
+  return {
+    runId,
+    done: executeAndTrack(runId, state, sourceRunResult.url, scenario, run, undefined, deps),
+  };
 }

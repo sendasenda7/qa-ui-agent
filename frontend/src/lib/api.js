@@ -70,8 +70,24 @@ export function isLoggedIn() {
  * Démarre un run en arrière-plan. Répond tout de suite avec { runId } :
  * la progression se suit ensuite avec getRun(runId) (voir hooks/useRunPolling.js).
  */
-export function startTestRun({ url, ticketText, timeoutMs, ticketUrl, deepReview }) {
-  return postJson("/api/test-run", { url, ticketText, timeoutMs, ticketUrl, deepReview });
+export function startTestRun({
+  url,
+  ticketText,
+  timeoutMs,
+  ticketUrl,
+  deepReview,
+  checkRtl,
+  checkVisualDiff,
+}) {
+  return postJson("/api/test-run", {
+    url,
+    ticketText,
+    timeoutMs,
+    ticketUrl,
+    deepReview,
+    checkRtl,
+    checkVisualDiff,
+  });
 }
 
 export function crawlOnly({ url, timeoutMs }) {

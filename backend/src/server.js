@@ -127,7 +127,7 @@ app.post(
 app.post(
   "/api/test-run",
   asyncRoute(async (req, res) => {
-    const { url, ticketText, timeoutMs, ticketUrl, deepReview } = req.body;
+    const { url, ticketText, timeoutMs, ticketUrl, deepReview, checkRtl, checkVisualDiff } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
@@ -149,6 +149,9 @@ app.post(
       timeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_STEP_TIMEOUT_MS),
       ticketUrl: ticketUrl || null,
       deepReview: !!deepReview,
+      // Booleans stricts : un client qui enverrait la chaîne "false" ne doit pas activer l'analyse.
+      checkRtl: checkRtl === true,
+      checkVisualDiff: checkVisualDiff === true,
     });
     res.status(202).json({ runId });
   })

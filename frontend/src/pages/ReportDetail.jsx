@@ -4,6 +4,7 @@ import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown, StickyNote, Check, Ex
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
+import RunAnalysis from "../components/RunAnalysis.jsx";
 import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 
@@ -227,15 +228,8 @@ export default function ReportDetail() {
           <span className="text-[11px] text-text-faint">sur {scenario.steps.length} étapes générées</span>
         </div>
 
-        <div className="bg-surface border border-border rounded-2xl p-4 flex flex-col gap-2 col-span-2">
-          <span className="text-xs text-text-muted">Régression visuelle & RTL</span>
-          <span className="text-sm text-text-faint">
-            Non rattaché à ce run — utilise{" "}
-            <Link to="/visual-rtl" className="text-accent-blue">
-              Visual/RTL
-            </Link>{" "}
-            pour ces vérifications.
-          </span>
+        <div className="col-span-2 flex flex-col gap-3">
+          <RunAnalysis options={data.options} runResult={runResult} />
         </div>
       </section>
 
