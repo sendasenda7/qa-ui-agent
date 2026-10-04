@@ -4,7 +4,7 @@ import { PNG } from "pngjs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { startRun, startReplay } from "../src/run-executor.js";
+import { startRun, startReplay, reserveRunSlot, getActiveRunCount } from "../src/run-executor.js";
 import { readRun, saveRun } from "../src/run-store.js";
 import { findBaselineRun, needsAnalysis } from "../src/run-analysis.js";
 
@@ -74,7 +74,7 @@ test("aucune option : pas de phase d'analyse, pas de résultats rtl/visualDiff",
   const { runId, done } = await startRun(baseInput, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
   await done;
   const { runResult, options } = await readRun(runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false, browserEngine: "chromium" });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.phase, "done");
   assert.equal(runResult.rtl, undefined);
   assert.equal(runResult.visualDiff, undefined);
@@ -190,7 +190,7 @@ test("rejeu : diff visuel toujours activé, comparé au run d'origine, RTL héri
   await replay.done;
 
   const saved = await readRun(replay.runId);
-  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true, browserEngine: "chromium" });
+  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(saved.runResult.replayOf, String(original.runId));
   assert.equal(saved.runResult.visualDiff.status, "done");
   assert.equal(saved.runResult.visualDiff.baselineRunId, original.runId);
@@ -208,7 +208,7 @@ test("rejeu d'un ancien run sans options ni capture : no_baseline, pas de planta
   const replay = await startReplay(String(oldRunId), { run: makeRunStub([1, 1, 1]) });
   await replay.done;
   const { options, runResult } = await readRun(replay.runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true, browserEngine: "chromium" });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.visualDiff.status, "no_baseline");
 });
 
@@ -295,4 +295,17 @@ test("rejeu : hérite du moteur du run d'origine", async () => {
   assert.equal(saved.options.browserEngine, "webkit");
   assert.equal(saved.runResult.browserEngine, "webkit");
   assert.equal(saved.runResult.visualDiff.status, "done");
+});
+
+test("un run démarré remplace sa réservation : la place n'est jamais comptée deux fois", async () => {
+  const reservation = reserveRunSlot(2);
+  assert.equal(getActiveRunCount(), 1);
+  const { done } = await startRun(
+    { url: "https://exemple.test", ticketText: "t" },
+    { crawl: crawlStub, plan: planStub, run: makeRunStub([1, 2, 3]) },
+    reservation
+  );
+  assert.equal(getActiveRunCount() <= 1, true, "réservation + run actif ne doivent compter que pour 1");
+  await done;
+  assert.equal(getActiveRunCount(), 0);
 });

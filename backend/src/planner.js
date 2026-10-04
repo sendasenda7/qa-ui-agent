@@ -344,7 +344,7 @@ export function validateScenario(scenario, crawlResult) {
     return true;
   });
 
-  const withSelectorCheck = wellFormedSteps.map((step) => {
+  const checkedSteps = wellFormedSteps.map((step) => {
     const needsSelector = !["navigate", "go_back"].includes(step.type);
     const selectorIsValid = !needsSelector || knownSelectors.has(step.selector);
     const description = step.description || "(étape sans description)";
@@ -361,6 +361,19 @@ export function validateScenario(scenario, crawlResult) {
       description,
       selectorValid: selectorIsValid,
     };
+  });
+
+  // Garde-fou anti-faux-positif : un "assert_text" sans texte attendu passerait TOUJOURS
+  // ("abc".includes("") vaut true) et afficherait un faux "réussi". On le retire.
+  const withSelectorCheck = checkedSteps.filter((step) => {
+    if (step.type !== "assert_text") return true;
+    const hasExpectedText = typeof step.value === "string" && step.value.trim() !== "";
+    if (!hasExpectedText) {
+      validationWarnings.push(
+        `Étape retirée : "assert_text" sans texte attendu sur "${step.selector}" (étape "${step.description}") — elle aurait toujours réussi.`
+      );
+    }
+    return hasExpectedText;
   });
 
   // Garde-fou anti-incohérence : un "assert_enabled" n'a de sens que s'il vérifie

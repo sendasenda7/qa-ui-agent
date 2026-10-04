@@ -74,7 +74,9 @@ export async function runScenario(url, scenario, options = {}) {
       // qui est le plus utile à voir.
       const screenshotPath = `${screenshotDir}/${runId}-step${index}-${step.type}.png`;
       try {
-        await page.screenshot({ path: screenshotPath });
+        // animations: "disabled" fige les animations CSS : sans cela, deux captures du même
+        // écran diffèrent (spinners, fondus) et le diff visuel crie à la régression.
+        await page.screenshot({ path: screenshotPath, animations: "disabled", caret: "hide" });
         stepResult.screenshot = screenshotPath;
       } catch {
         // Si même le screenshot échoue (page fermée, crash...), on continue sans bloquer.
@@ -105,8 +107,30 @@ export async function runScenario(url, scenario, options = {}) {
   };
 }
 
-async function executeStep(page, baseUrl, step, timeouts) {
+// Types d'étape qui n'agissent pas sur un élément précis.
+const STEPS_WITHOUT_SELECTOR = ["navigate", "go_back"];
+
+/**
+ * Exporté pour les tests unitaires (avec une fausse `page`).
+ *
+ * Avant toute action, on refuse sur-le-champ une étape dont le sélecteur n'existe pas dans
+ * le crawl (halluciné par l'IA, marqué `selectorValid: false` par planner.js) : sans cela,
+ * Playwright attendrait tout le timeout (10 s par défaut) avant d'échouer, avec un message
+ * peu parlant.
+ */
+export async function executeStep(page, baseUrl, step, timeouts) {
   const { stepTimeoutMs, navigationTimeoutMs } = timeouts;
+
+  if (!STEPS_WITHOUT_SELECTOR.includes(step.type)) {
+    if (!step.selector) {
+      throw new Error(`Étape "${step.type}" sans sélecteur : impossible de l'exécuter.`);
+    }
+    if (step.selectorValid === false) {
+      throw new Error(
+        `Sélecteur absent de la page crawlée (probablement halluciné par l'IA) : ${step.selector} — étape non exécutée.`
+      );
+    }
+  }
 
   switch (step.type) {
     case "navigate":
@@ -151,8 +175,13 @@ async function executeStep(page, baseUrl, step, timeouts) {
     case "assert_text": {
       const locator = page.locator(step.selector);
       await locator.waitFor({ state: "visible", timeout: stepTimeoutMs });
+      const expectedText = (step.value ?? "").trim();
+      if (!expectedText) {
+        // Défense en profondeur (planner.js retire déjà ces étapes) : "".includes() passe toujours.
+        throw new Error("assert_text sans texte attendu : l'assertion ne vérifierait rien.");
+      }
       const actualText = (await locator.innerText()).trim();
-      if (!actualText.includes((step.value ?? "").trim())) {
+      if (!actualText.includes(expectedText)) {
         throw new Error(
           `Texte attendu introuvable. Attendu (contient) : "${step.value}" — trouvé : "${actualText}"`
         );

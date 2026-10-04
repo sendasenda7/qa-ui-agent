@@ -1,6 +1,9 @@
 import { launchBrowser } from "./browser.js";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
+import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
+
+const BACKEND_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Génère un sélecteur "le plus stable possible" pour un élément donné,
@@ -12,18 +15,47 @@ export function buildSelectorInBrowser() {
   function getAccessibleName(el) {
     const aria = el.getAttribute("aria-label");
     if (aria) return aria.trim();
-    const text = (el.innerText || el.value || "").trim();
+    // Le texte réellement affiché : le libellé associé (<label>) pour une case/radio, et
+    // value uniquement pour les boutons <input type=button|submit|reset> (pour une case ou un
+    // champ de saisie, value n'est PAS du texte visible : "donor", valeur saisie...).
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute("type") || "").toLowerCase();
+    const valueIsLabel = tag === "input" && ["button", "submit", "reset"].includes(type);
+    const labelText = el.labels && el.labels.length ? el.labels[0].innerText : "";
+    const text = (el.innerText || labelText || (valueIsLabel ? el.value : "") || "").trim();
     return text.slice(0, 60);
+  }
+
+  // Échappe un identifiant CSS (ids React ":r0:", ids commençant par un chiffre...).
+  function cssEscape(value) {
+    return typeof CSS !== "undefined" && CSS.escape
+      ? CSS.escape(value)
+      : String(value).replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+  }
+
+  // Valeur d'attribut entre guillemets doubles, avec \ et " échappés.
+  function attrValue(value) {
+    return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+
+  // Un sélecteur n'est utilisable que s'il désigne EXACTEMENT cet élément.
+  function isUnique(selector, el) {
+    try {
+      const matches = document.querySelectorAll(selector);
+      return matches.length === 1 && matches[0] === el;
+    } catch {
+      return false;
+    }
   }
 
   function cssPath(el) {
     if (!(el instanceof Element)) return "";
     const path = [];
     let node = el;
-    while (node && node.nodeType === Node.ELEMENT_NODE && path.length < 6) {
+    while (node && node.nodeType === Node.ELEMENT_NODE && path.length < 12) {
       let selector = node.nodeName.toLowerCase();
       if (node.id) {
-        selector += `#${node.id}`;
+        selector += `#${cssEscape(node.id)}`;
         path.unshift(selector);
         break;
       } else {
@@ -121,18 +153,31 @@ export function buildSelectorInBrowser() {
       const id = el.id;
       const name = el.getAttribute("name");
 
-      let preferredSelector;
-      let selectorStrategy;
+      // Chaque stratégie n'est retenue que si elle est valide ET unique dans la page ;
+      // sinon on passe à la suivante (un groupe de radios partage le même name, par exemple).
+      const candidates = [];
       if (testId) {
-        preferredSelector = `[data-testid="${testId}"]`;
-        selectorStrategy = "data-testid";
-      } else if (id) {
-        preferredSelector = `#${id}`;
-        selectorStrategy = "id";
-      } else if (name) {
-        preferredSelector = `[name="${name}"]`;
-        selectorStrategy = "name";
-      } else {
+        candidates.push([`[data-testid=${attrValue(testId)}]`, "data-testid"]);
+      }
+      if (id) candidates.push([`#${cssEscape(id)}`, "id"]);
+      if (name) {
+        candidates.push([`[name=${attrValue(name)}]`, "name"]);
+        const value = el.getAttribute("value");
+        if (value !== null) {
+          candidates.push([`[name=${attrValue(name)}][value=${attrValue(value)}]`, "name+value"]);
+        }
+      }
+
+      let preferredSelector = null;
+      let selectorStrategy = null;
+      for (const [candidate, strategy] of candidates) {
+        if (isUnique(candidate, el)) {
+          preferredSelector = candidate;
+          selectorStrategy = strategy;
+          break;
+        }
+      }
+      if (!preferredSelector) {
         preferredSelector = cssPath(el);
         selectorStrategy = "css-path (fragile, à surveiller)";
       }
@@ -146,6 +191,7 @@ export function buildSelectorInBrowser() {
         selector: preferredSelector,
         selectorStrategy,
         placeholder: el.getAttribute("placeholder") || null,
+        lang: el.getAttribute("lang") || el.getAttribute("hreflang") || null,
         detectedBy: heuristic
           ? "heuristique (cursor, sans sémantique HTML — à vérifier)"
           : "sémantique (balise/role/attribut HTML standard)",
@@ -207,6 +253,7 @@ export async function crawlPage(url, options = {}) {
 
 // Exécution directe : `npm run crawl -- <url>`
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.chdir(BACKEND_ROOT); // dossiers relatifs (debug-screenshots/) toujours sous backend/
   const targetUrl = process.argv[2] || "https://the-internet.herokuapp.com/login";
   crawlPage(targetUrl)
     .then((result) => {

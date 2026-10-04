@@ -4,6 +4,10 @@ import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
 import { needsAnalysis, runAnalysis } from "./run-analysis.js";
 import { DEFAULT_BROWSER_ENGINE, resolveBrowserEngine } from "./browser.js";
+import { HttpError } from "./http-error.js";
+
+const DEFAULT_STEP_TIMEOUT_MS = 10000;
+const DEFAULT_NAVIGATION_TIMEOUT_MS = 30000;
 
 /**
  * Orchestre un run complet EN ARRIÈRE-PLAN : crawl → scénario IA → exécution.
@@ -28,8 +32,28 @@ function nextRunId() {
   return lastRunId;
 }
 
+// Places réservées par des requêtes dont le run n'est pas encore enregistré comme actif.
+const pendingReservations = new Set();
+
 export function getActiveRunCount() {
-  return activeRunIds.size;
+  return activeRunIds.size + pendingReservations.size;
+}
+
+/**
+ * Réserve de façon SYNCHRONE une place de run. Vérifier getActiveRunCount() puis démarrer
+ * plus tard laissait passer plusieurs requêtes simultanées : toutes voyaient "une place libre"
+ * avant que la première n'ait eu le temps de s'enregistrer.
+ *
+ * Renvoie une réservation { release() } (ou null si la limite est atteinte). On la passe à
+ * startRun / startReplay, qui la libèrent EUX-MÊMES à l'instant où le run devient actif : la
+ * place n'est ainsi jamais comptée deux fois. `release()` est idempotent : l'appeler aussi dans
+ * un `finally` côté serveur libère la place si le démarrage échoue avant d'en arriver là.
+ */
+export function reserveRunSlot(maxConcurrentRuns) {
+  if (getActiveRunCount() >= maxConcurrentRuns) return null;
+  const reservation = { release: () => pendingReservations.delete(reservation) };
+  pendingReservations.add(reservation);
+  return reservation;
 }
 
 function truncate(text, maxLength = 120) {
@@ -60,7 +84,8 @@ function makeRunResult(runId, url, phase, browserEngine = DEFAULT_BROWSER_ENGINE
  * général `runScenario`) en suivant sa progression, puis marque le run terminé.
  * Partagé par startRun (scénario généré par l'IA) et startReplay (scénario réutilisé).
  */
-async function executeAndTrack(runId, state, url, scenario, run, timeoutMs, analysisDeps = {}) {
+async function executeAndTrack(runId, state, url, scenario, run, timeouts, analysisDeps = {}) {
+  const { stepTimeoutMs, navigationTimeoutMs } = timeouts;
   activeRunIds.add(runId);
 
   let writeQueue = Promise.resolve();
@@ -100,7 +125,8 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs, anal
     const finalResult = await run(url, scenario, {
       runId,
       onProgress: handleProgress,
-      stepTimeoutMs: timeoutMs,
+      stepTimeoutMs,
+      navigationTimeoutMs,
       browserEngine: state.options?.browserEngine,
     });
     runResult.stepsTotal = finalResult.stepsTotal;
@@ -116,7 +142,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs, anal
       runResult.phase = "analyzing";
       runResult.currentStep = null;
       await persist();
-      await runAnalysis(state, persist, analysisDeps);
+      await runAnalysis(state, persist, { ...analysisDeps, navigationTimeoutMs });
     }
     runResult.status = finalResult.status;
     runResult.phase = "done";
@@ -143,14 +169,16 @@ export async function startRun(
   {
     url,
     ticketText,
-    timeoutMs,
+    timeoutMs = DEFAULT_STEP_TIMEOUT_MS, // délai max par ÉTAPE (clic, saisie...)
+    navigationTimeoutMs = DEFAULT_NAVIGATION_TIMEOUT_MS, // délai max par chargement de page
     ticketUrl = null,
     deepReview = false,
     checkRtl = false,
     checkVisualDiff = false,
     browserEngine,
   },
-  deps = {}
+  deps = {},
+  reservation = null
 ) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
   // Lève une erreur AVANT de créer le run si le moteur est inconnu.
@@ -161,7 +189,14 @@ export async function startRun(
     ticketText,
     ticketUrl,
     // Analyses demandées sur l'écran "New Run" (voir run-analysis.js).
-    options: { checkRtl, checkVisualDiff, browserEngine: engine },
+    // Les timeouts sont mémorisés pour qu'un rejeu (startReplay) utilise les mêmes.
+    options: {
+      checkRtl,
+      checkVisualDiff,
+      stepTimeoutMs: timeoutMs,
+      navigationTimeoutMs,
+      browserEngine: engine,
+    },
     // Provisoire : remplacé par le vrai scénario une fois généré par l'IA.
     scenario: { ticketSummary: truncate(ticketText), warnings: [], steps: [] },
     runResult: makeRunResult(runId, url, "crawling", engine),
@@ -169,14 +204,22 @@ export async function startRun(
 
   // Le premier enregistrement doit réussir AVANT de répondre au frontend :
   // sinon il irait lire un run qui n'existe pas encore.
-  await saveRun(runId, state);
+  // Enregistré comme actif AVANT le premier await, et la réservation libérée dans le même
+  // instant synchrone : aucune fenêtre où le run n'est compté nulle part, ni compté deux fois.
   activeRunIds.add(runId);
+  reservation?.release();
+  try {
+    await saveRun(runId, state);
+  } catch (err) {
+    activeRunIds.delete(runId);
+    throw err;
+  }
 
   const { runResult } = state;
 
   async function execute() {
     try {
-      const crawlResult = await crawl(url, { navigationTimeoutMs: timeoutMs, browserEngine: engine });
+      const crawlResult = await crawl(url, { navigationTimeoutMs, browserEngine: engine });
       runResult.crawl = {
         title: crawlResult.title,
         elementCount: crawlResult.elementCount,
@@ -195,15 +238,30 @@ export async function startRun(
       }
       state.scenario = scenario;
       activeRunIds.delete(runId); // executeAndTrack le rajoute ; évite un double comptage.
-      await executeAndTrack(runId, state, url, scenario, run, timeoutMs, deps);
+      await executeAndTrack(
+        runId,
+        state,
+        url,
+        scenario,
+        run,
+        { stepTimeoutMs: timeoutMs, navigationTimeoutMs },
+        deps
+      );
     } catch (err) {
       console.error(`[run ${runId}] erreur :`, err.message);
       runResult.status = "error";
       runResult.phase = "error";
       runResult.error = err.message;
       runResult.finishedAt = new Date().toISOString();
-      await saveRun(runId, state);
-      activeRunIds.delete(runId);
+      try {
+        await saveRun(runId, state);
+      } catch (saveErr) {
+        // Un rejet ici n'est attendu par personne (le serveur n'attend pas `done`) : il ferait
+        // tomber tout le processus Node (unhandledRejection). On journalise et on continue.
+        console.error(`[run ${runId}] sauvegarde de l'erreur impossible :`, saveErr.message);
+      } finally {
+        activeRunIds.delete(runId);
+      }
     }
   }
 
@@ -219,16 +277,16 @@ export async function startRun(
  * Crée un NOUVEAU run (nouvel id, nouveau fichier) qui référence le run d'origine via
  * `replayOf`, pour garder l'historique de chaque run intact.
  */
-export async function startReplay(sourceRunId, deps = {}) {
+export async function startReplay(sourceRunId, deps = {}, reservation = null) {
   const { run = runScenario } = deps;
 
   const source = await readRun(sourceRunId);
   if (!source) {
-    throw new Error(`Run introuvable : ${sourceRunId}`);
+    throw new HttpError(404, `Run introuvable : ${sourceRunId}`);
   }
   const { scenario, runResult: sourceRunResult } = source;
   if (!scenario?.steps || scenario.steps.length === 0) {
-    throw new Error(`Le run ${sourceRunId} n'a pas de scénario exécutable à rejouer.`);
+    throw new HttpError(409, `Le run ${sourceRunId} n'a pas de scénario exécutable à rejouer.`);
   }
 
   const engine = resolveBrowserEngine(source.options?.browserEngine);
@@ -244,6 +302,9 @@ export async function startReplay(sourceRunId, deps = {}) {
       checkRtl: Boolean(source.options?.checkRtl),
       checkVisualDiff: true,
       browserEngine: engine,
+      // Mêmes timeouts que le run d'origine (un staging lent le reste au rejeu).
+      stepTimeoutMs: source.options?.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
+      navigationTimeoutMs: source.options?.navigationTimeoutMs ?? DEFAULT_NAVIGATION_TIMEOUT_MS,
     },
     scenario,
     runResult: {
@@ -252,10 +313,28 @@ export async function startReplay(sourceRunId, deps = {}) {
     },
   };
 
-  await saveRun(runId, state);
+  activeRunIds.add(runId);
+  reservation?.release();
+  try {
+    await saveRun(runId, state);
+  } catch (err) {
+    activeRunIds.delete(runId);
+    throw err;
+  }
 
   return {
     runId,
-    done: executeAndTrack(runId, state, sourceRunResult.url, scenario, run, undefined, deps),
+    done: executeAndTrack(
+      runId,
+      state,
+      sourceRunResult.url,
+      scenario,
+      run,
+      {
+        stepTimeoutMs: state.options.stepTimeoutMs,
+        navigationTimeoutMs: state.options.navigationTimeoutMs,
+      },
+      deps
+    ),
   };
 }

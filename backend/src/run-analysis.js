@@ -27,6 +27,11 @@ export function needsAnalysis(options) {
   return Boolean(options?.checkRtl || options?.checkVisualDiff);
 }
 
+/** Compare deux tickets sans tenir compte des espaces, retours à la ligne et de la casse. */
+function normalizeTicket(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 /** Un run n'est utilisable comme référence que s'il a au moins une capture. */
 function hasScreenshots(run) {
   return Boolean(run?.runResult?.results?.some((step) => step?.screenshot));
@@ -65,7 +70,7 @@ export async function findBaselineRun(state, deps = {}) {
     const run = await read(candidate.runId);
     if (
       run &&
-      run.ticketText === ticketText &&
+      normalizeTicket(run.ticketText) === normalizeTicket(ticketText) &&
       resolveBrowserEngine(run.options?.browserEngine) === engine &&
       hasScreenshots(run)
     ) {
@@ -81,14 +86,17 @@ export async function findBaselineRun(state, deps = {}) {
  * Ne lève jamais d'exception.
  */
 export async function runAnalysis(state, persist, deps = {}) {
-  const { localize = checkLocalization, compare = compareRuns } = deps;
+  const { localize = checkLocalization, compare = compareRuns, navigationTimeoutMs } = deps;
   const { options, runResult } = state;
 
   if (options?.checkRtl) {
     try {
       runResult.rtl = {
         status: "done",
-        report: await localize(runResult.url, { browserEngine: options.browserEngine }),
+        report: await localize(runResult.url, {
+          navigationTimeoutMs,
+          browserEngine: options.browserEngine,
+        }),
       };
     } catch (err) {
       console.error(`[run ${runResult.runId}] analyse RTL impossible :`, err.message);
