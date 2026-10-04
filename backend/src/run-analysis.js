@@ -2,6 +2,7 @@ import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { listRuns, readRun } from "./run-store.js";
 import { resolveBrowserEngine } from "./browser.js";
+import { stripAnsi } from "./page-utils.js";
 
 /**
  * Analyses optionnelles exécutées APRÈS le scénario d'un run, selon les interrupteurs
@@ -100,7 +101,7 @@ export async function runAnalysis(state, persist, deps = {}) {
       };
     } catch (err) {
       console.error(`[run ${runResult.runId}] analyse RTL impossible :`, err.message);
-      runResult.rtl = { status: "error", error: err.message };
+      runResult.rtl = { status: "error", error: stripAnsi(err.message) };
     }
     await persist();
   }
@@ -125,7 +126,7 @@ export async function runAnalysis(state, persist, deps = {}) {
       }
     } catch (err) {
       console.error(`[run ${runResult.runId}] diff visuel impossible :`, err.message);
-      runResult.visualDiff = { status: "error", error: err.message };
+      runResult.visualDiff = { status: "error", error: stripAnsi(err.message) };
     }
     await persist();
   }

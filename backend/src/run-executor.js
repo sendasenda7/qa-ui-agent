@@ -5,6 +5,7 @@ import { saveRun, readRun } from "./run-store.js";
 import { needsAnalysis, runAnalysis } from "./run-analysis.js";
 import { DEFAULT_BROWSER_ENGINE, resolveBrowserEngine } from "./browser.js";
 import { HttpError } from "./http-error.js";
+import { stripAnsi } from "./page-utils.js";
 
 const DEFAULT_STEP_TIMEOUT_MS = 10000;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30000;
@@ -150,7 +151,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
     console.error(`[run ${runId}] erreur :`, err.message);
     runResult.status = "error";
     runResult.phase = "error";
-    runResult.error = err.message;
+    runResult.error = stripAnsi(err.message);
   } finally {
     runResult.currentStep = null;
     runResult.finishedAt = new Date().toISOString();
@@ -251,7 +252,7 @@ export async function startRun(
       console.error(`[run ${runId}] erreur :`, err.message);
       runResult.status = "error";
       runResult.phase = "error";
-      runResult.error = err.message;
+      runResult.error = stripAnsi(err.message);
       runResult.finishedAt = new Date().toISOString();
       try {
         await saveRun(runId, state);

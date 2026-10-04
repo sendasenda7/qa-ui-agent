@@ -1,4 +1,5 @@
 import { launchBrowser } from "./browser.js";
+import { gotoAndSettle } from "./page-utils.js";
 import { buildSelectorInBrowser } from "./crawler.js";
 
 // Libellés (en minuscules) qui désignent un bouton "passer en arabe". Complétables sans toucher
@@ -76,7 +77,7 @@ export async function checkLocalization(url, options = {}) {
   try {
     const page = await browser.newPage();
 
-    await page.goto(url, { waitUntil: "networkidle", timeout: navigationTimeoutMs });
+    await gotoAndSettle(page, url, { timeout: navigationTimeoutMs });
     await page
       .waitForSelector("input, textarea, select, button, a", { timeout: 5000 })
       .catch(() => {});

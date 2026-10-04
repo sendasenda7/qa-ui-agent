@@ -1,4 +1,5 @@
 import { launchBrowser, resolveBrowserEngine } from "./browser.js";
+import { gotoAndSettle, goBackAndSettle, stripAnsi } from "./page-utils.js";
 import { mkdir } from "fs/promises";
 
 /**
@@ -65,7 +66,7 @@ export async function runScenario(url, scenario, options = {}) {
         await executeStep(page, url, step, { stepTimeoutMs, navigationTimeoutMs });
       } catch (err) {
         stepResult.status = "failed";
-        stepResult.error = err.message;
+        stepResult.error = stripAnsi(err.message);
         overallStatus = "failed";
       }
       stepResult.durationMs = Date.now() - startedAt;
@@ -134,11 +135,11 @@ export async function executeStep(page, baseUrl, step, timeouts) {
 
   switch (step.type) {
     case "navigate":
-      await page.goto(baseUrl, { waitUntil: "networkidle", timeout: navigationTimeoutMs });
+      await gotoAndSettle(page, baseUrl, { timeout: navigationTimeoutMs });
       return;
 
     case "go_back":
-      await page.goBack({ waitUntil: "networkidle", timeout: navigationTimeoutMs });
+      await goBackAndSettle(page, { timeout: navigationTimeoutMs });
       return;
 
     case "click":

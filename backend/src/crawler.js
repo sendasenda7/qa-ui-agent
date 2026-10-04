@@ -1,4 +1,5 @@
 import { launchBrowser } from "./browser.js";
+import { gotoAndSettle } from "./page-utils.js";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
@@ -219,7 +220,7 @@ export async function crawlPage(url, options = {}) {
     const page = await browser.newPage();
 
     const startedAt = Date.now();
-    await page.goto(url, { waitUntil: "networkidle", timeout: navigationTimeoutMs });
+    await gotoAndSettle(page, url, { timeout: navigationTimeoutMs });
     const title = await page.title();
 
     // Les applis SPA (Angular, React...) affichent parfois le contenu principal
