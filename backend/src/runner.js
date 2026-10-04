@@ -111,6 +111,28 @@ export async function runScenario(url, scenario, options = {}) {
 // Types d'étape qui n'agissent pas sur un élément précis.
 const STEPS_WITHOUT_SELECTOR = ["navigate", "go_back"];
 
+// Combien de temps (ms, au plus) on laisse au sélecteur principal pour apparaître avant d'essayer
+// le sélecteur de secours.
+const PRIMARY_SELECTOR_PROBE_MS = 2000;
+
+/**
+ * Choisit le locator d'une étape : le sélecteur principal, ou — s'il ne trouve rien — le sélecteur
+ * de secours (`step.fallbackSelector`, voir crawler.js). Le principal est lisible mais dépend du
+ * texte affiché (role=button[name="Continuer"]) : après un changement de langue du site il ne
+ * trouve plus rien, alors que le sélecteur de secours (structurel) reste valable.
+ * Exporté pour les tests.
+ */
+export async function resolveLocator(page, step, stepTimeoutMs) {
+  const primary = page.locator(step.selector);
+  if (!step.fallbackSelector) return primary;
+  try {
+    await primary.first().waitFor({ state: "attached", timeout: Math.min(stepTimeoutMs, PRIMARY_SELECTOR_PROBE_MS) });
+    return primary;
+  } catch {
+    return page.locator(step.fallbackSelector);
+  }
+}
+
 /**
  * Exporté pour les tests unitaires (avec une fausse `page`).
  *
@@ -133,6 +155,9 @@ export async function executeStep(page, baseUrl, step, timeouts) {
     }
   }
 
+  // Les étapes qui agissent sur un élément passent toutes par ce locator.
+  const locatorFor = () => resolveLocator(page, step, stepTimeoutMs);
+
   switch (step.type) {
     case "navigate":
       await gotoAndSettle(page, baseUrl, { timeout: navigationTimeoutMs });
@@ -143,24 +168,25 @@ export async function executeStep(page, baseUrl, step, timeouts) {
       return;
 
     case "click":
-      await page.locator(step.selector).click({ timeout: stepTimeoutMs });
+      await (await locatorFor()).click({ timeout: stepTimeoutMs });
       return;
 
     case "fill":
-      await page.locator(step.selector).fill(step.value ?? "", { timeout: stepTimeoutMs });
+      await (await locatorFor()).fill(step.value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "select":
-      await page.locator(step.selector).selectOption(step.value ?? "", { timeout: stepTimeoutMs });
+      await (await locatorFor()).selectOption(step.value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "assert_visible":
-      await page.locator(step.selector).waitFor({ state: "visible", timeout: stepTimeoutMs });
+      await (await locatorFor()).waitFor({ state: "visible", timeout: stepTimeoutMs });
       return;
 
     case "assert_enabled": {
-      await page.locator(step.selector).waitFor({ state: "visible", timeout: stepTimeoutMs });
-      const isDisabled = await page.locator(step.selector).evaluate((el) => {
+      const locator = await locatorFor();
+      await locator.waitFor({ state: "visible", timeout: stepTimeoutMs });
+      const isDisabled = await locator.evaluate((el) => {
         return (
           el.hasAttribute("disabled") ||
           el.getAttribute("aria-disabled") === "true" ||
@@ -174,7 +200,7 @@ export async function executeStep(page, baseUrl, step, timeouts) {
     }
 
     case "assert_text": {
-      const locator = page.locator(step.selector);
+      const locator = await locatorFor();
       await locator.waitFor({ state: "visible", timeout: stepTimeoutMs });
       const expectedText = (step.value ?? "").trim();
       if (!expectedText) {

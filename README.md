@@ -161,6 +161,18 @@ de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visua
 (étapes à sélecteur halluciné), `url-guard.js` (SSRF), le stockage des runs et des notes, la
 détection du bouton de langue, et l'API HTTP complète (auth, 400/401/404/429, CORS, en-têtes).
 
+## Sélecteurs d'éléments
+
+Pour chaque élément interactif, le crawler choisit le sélecteur le plus stable, dans cet ordre :
+`data-testid` > `id` > `name` > **rôle + nom visible** (`role=button[name="Continuer"]`) >
+texte visible d'une carte cliquable (`text="Je suis un Donateur"`) > chemin CSS (dernier recours).
+
+Un sélecteur n'est retenu que s'il désigne **exactement** l'élément dans la page (vérifié avec
+Playwright). Quand un sélecteur lisible remplace un chemin CSS fragile ou un `id` généré
+(`mat-input-0`, `:r0:`), l'ancien est conservé comme **sélecteur de secours** : si le lisible ne
+trouve plus rien (par ex. le site vient de passer en arabe, donc le texte des boutons a changé),
+le runner essaie automatiquement le secours.
+
 ## Configuration (`backend/.env`)
 
 Copie `.env.example` en `.env`. Variables obligatoires : `GROQ_API_KEY`, `AUTH_PASSWORD`, `JWT_SECRET`

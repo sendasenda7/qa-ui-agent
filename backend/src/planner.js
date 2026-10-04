@@ -321,6 +321,11 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
  */
 export function validateScenario(scenario, crawlResult) {
   const knownSelectors = new Set(crawlResult.elements.map((el) => el.selector));
+  // Sélecteur de secours éventuel de chaque élément (voir crawler.js) : copié dans l'étape pour que
+  // le runner puisse s'en servir sans avoir besoin du crawl.
+  const fallbackBySelector = new Map(
+    crawlResult.elements.filter((el) => el.fallbackSelector).map((el) => [el.selector, el.fallbackSelector])
+  );
   const validationWarnings = [...(scenario.warnings || [])];
 
   if (!Array.isArray(scenario.steps)) {
@@ -356,10 +361,13 @@ export function validateScenario(scenario, crawlResult) {
       );
     }
 
+    const fallbackSelector = selectorIsValid ? fallbackBySelector.get(step.selector) : undefined;
+
     return {
       ...step,
       description,
       selectorValid: selectorIsValid,
+      ...(fallbackSelector ? { fallbackSelector } : {}),
     };
   });
 

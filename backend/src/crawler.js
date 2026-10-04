@@ -27,6 +27,39 @@ export function buildSelectorInBrowser() {
     return text.slice(0, 60);
   }
 
+  // Rôle ARIA de l'élément (explicite ou implicite d'après sa balise) : sert à construire des
+  // sélecteurs lisibles du type role=button[name="Continuer"] (voir upgradeToSemanticSelectors).
+  function getAriaRole(el) {
+    const explicit = el.getAttribute("role");
+    if (explicit) return explicit.trim().split(/\s+/)[0];
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute("type") || "").toLowerCase();
+    if (tag === "a" && el.hasAttribute("href")) return "link";
+    if (tag === "button") return "button";
+    if (tag === "select") return el.multiple || el.size > 1 ? "listbox" : "combobox";
+    if (tag === "textarea") return "textbox";
+    if (/^h[1-6]$/.test(tag)) return "heading";
+    if (tag === "input") {
+      if (["button", "submit", "reset", "image"].includes(type)) return "button";
+      if (type === "checkbox" || type === "radio") return type;
+      if (type === "range") return "slider";
+      if (type === "number") return "spinbutton";
+      if (type === "search") return "searchbox";
+      if (type === "hidden") return null;
+      return "textbox";
+    }
+    return null;
+  }
+
+  // Première ligne de texte visible (pour un conteneur cliquable sans sémantique : une "carte").
+  function getVisibleText(el) {
+    const firstLine = (el.innerText || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find(Boolean);
+    return firstLine ? firstLine.slice(0, 60) : null;
+  }
+
   // Échappe un identifiant CSS (ids React ":r0:", ids commençant par un chiffre...).
   function cssEscape(value) {
     return typeof CSS !== "undefined" && CSS.escape
@@ -137,17 +170,22 @@ export function buildSelectorInBrowser() {
     })),
   ];
 
-  return combined
-    .filter(({ el }) => {
-      const style = window.getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return (
-        style.display !== "none" &&
-        style.visibility !== "hidden" &&
-        rect.width > 0 &&
-        rect.height > 0
-      );
-    })
+  const visible = combined.filter(({ el }) => {
+    const style = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      rect.width > 0 &&
+      rect.height > 0
+    );
+  });
+
+  // Mémorise les éléments (même ordre que `index`) : crawlPage s'en sert pour vérifier côté Node
+  // qu'un sélecteur de remplacement désigne bien CET élément, puis efface cette variable.
+  window.__qaCrawlElements = visible.map(({ el }) => el);
+
+  return visible
     .map(({ el, heuristic, disabledLooking }, index) => {
       const testId =
         el.getAttribute("data-testid") || el.getAttribute("data-test-id");
@@ -188,6 +226,8 @@ export function buildSelectorInBrowser() {
         tag: el.tagName.toLowerCase(),
         type: el.getAttribute("type") || null,
         role: el.getAttribute("role") || null,
+        ariaRole: getAriaRole(el),
+        visibleText: getVisibleText(el),
         accessibleName: getAccessibleName(el),
         selector: preferredSelector,
         selectorStrategy,
@@ -199,6 +239,85 @@ export function buildSelectorInBrowser() {
         disabledLooking,
       };
     });
+}
+
+// Identifiants générés par les frameworks (Angular Material "mat-input-0", React ":r0:"...) : ils
+// changent d'un affichage à l'autre, donc un sélecteur #id basé dessus n'est pas fiable.
+const VOLATILE_ID_PATTERN = /^(mat-|cdk-|ng-|ngx-|ember|react-|radix-|headlessui-|:r|__)|\d{4,}/i;
+
+/** Échappe un texte pour le mettre entre guillemets dans un sélecteur Playwright. */
+function quoteForSelector(text) {
+  return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function isUsableLabel(text) {
+  return typeof text === "string" && text.trim() !== "" && text.length <= 60 && !/[\n\r]/.test(text);
+}
+
+/**
+ * Sélecteurs lisibles, par ordre de préférence, pour un élément (fonction pure, testée sans navigateur) :
+ *  1. rôle + nom accessible : role=button[name="Continuer"]  (ce que voit un utilisateur) ;
+ *  2. champ de saisie : [placeholder="Email"] ;
+ *  3. conteneur cliquable sans sémantique (une "carte") : text="Je suis un Donateur".
+ * Aucun n'est garanti unique : upgradeToSemanticSelectors le vérifie dans la vraie page.
+ */
+export function buildSemanticCandidates(el) {
+  const candidates = [];
+  const names = [...new Set([el.accessibleName, el.placeholder].filter(isUsableLabel))];
+
+  if (el.ariaRole) {
+    for (const name of names) {
+      candidates.push({ selector: `role=${el.ariaRole}[name=${quoteForSelector(name)}]`, strategy: "role+nom" });
+    }
+  }
+  if (isUsableLabel(el.placeholder)) {
+    candidates.push({ selector: `[placeholder=${quoteForSelector(el.placeholder)}]`, strategy: "placeholder" });
+  }
+  if (!el.ariaRole && isUsableLabel(el.visibleText)) {
+    candidates.push({ selector: `text=${quoteForSelector(el.visibleText)}`, strategy: "texte" });
+  }
+  return candidates;
+}
+
+/**
+ * Remplace les sélecteurs fragiles (chemin CSS "html > body > app-root:nth-of-type(1)...", ids
+ * générés) par un sélecteur lisible quand il en existe un qui désigne EXACTEMENT cet élément.
+ * L'ancien sélecteur n'est pas perdu : il devient `fallbackSelector`, utilisé par le runner si le
+ * sélecteur lisible ne trouve plus rien (par ex. après un passage du site en arabe, où le texte des
+ * boutons change alors que la structure de la page reste la même).
+ *
+ * Doit être appelé tant que window.__qaCrawlElements existe (voir buildSelectorInBrowser).
+ */
+export async function upgradeToSemanticSelectors(page, elements) {
+  for (const el of elements) {
+    const isFragile =
+      el.selectorStrategy.startsWith("css-path") ||
+      (el.selectorStrategy === "id" && VOLATILE_ID_PATTERN.test(el.selector.replace(/^#/, "").replace(/\\/g, "")));
+    if (!isFragile) continue;
+
+    for (const candidate of buildSemanticCandidates(el)) {
+      try {
+        const locator = page.locator(candidate.selector);
+        if ((await locator.count()) !== 1) continue; // ambigu ou introuvable
+        // Même élément (ou un de ses descendants, ex. le titre d'une carte cliquable) ?
+        const isSameElement = await locator.evaluate((node, index) => {
+          const target = window.__qaCrawlElements?.[index];
+          return Boolean(target) && (node === target || target.contains(node));
+        }, el.index);
+        if (!isSameElement) continue;
+
+        el.fallbackSelector = el.selector;
+        el.selector = candidate.selector;
+        el.selectorStrategy = candidate.strategy;
+        break;
+      } catch {
+        // Sélecteur invalide pour Playwright : on essaie le candidat suivant.
+      }
+    }
+  }
+  await page.evaluate(() => {
+    delete window.__qaCrawlElements;
+  });
 }
 
 /**
@@ -233,6 +352,7 @@ export async function crawlPage(url, options = {}) {
       });
 
     const elements = await page.evaluate(buildSelectorInBrowser);
+    await upgradeToSemanticSelectors(page, elements);
 
     await mkdir("debug-screenshots", { recursive: true });
     const screenshotPath = `debug-screenshots/${Date.now()}.png`;
