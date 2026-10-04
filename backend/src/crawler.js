@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.js";
 import { pathToFileURL } from "url";
 import { mkdir } from "fs/promises";
 
@@ -160,14 +160,15 @@ export function buildSelectorInBrowser() {
  *
  * Options :
  *  - navigationTimeoutMs : délai max pour le chargement initial de la page (défaut 30s) —
- *    à augmenter sur un environnement de staging plus lent que la prod.
+ *    à augmenter sur un environnement de staging plus lent que la prod ;
+ *  - browserEngine       : "chromium" (défaut) | "firefox" | "webkit".
  */
 export async function crawlPage(url, options = {}) {
-  const { navigationTimeoutMs = 30000 } = options;
-  const browser = await chromium.launch();
+  const { navigationTimeoutMs = 30000, browserEngine } = options;
+  const browser = await launchBrowser(browserEngine);
 
   // try/finally : si la page est injoignable (timeout, DNS...), on ferme quand même
-  // Chromium. Indispensable maintenant que les runs tournent en arrière-plan.
+  // le navigateur. Indispensable maintenant que les runs tournent en arrière-plan.
   try {
     const page = await browser.newPage();
 

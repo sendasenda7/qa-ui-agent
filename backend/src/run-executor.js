@@ -3,6 +3,7 @@ import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
 import { needsAnalysis, runAnalysis } from "./run-analysis.js";
+import { DEFAULT_BROWSER_ENGINE, resolveBrowserEngine } from "./browser.js";
 
 /**
  * Orchestre un run complet EN ARRIÈRE-PLAN : crawl → scénario IA → exécution.
@@ -35,10 +36,11 @@ function truncate(text, maxLength = 120) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
-function makeRunResult(runId, url, phase) {
+function makeRunResult(runId, url, phase, browserEngine = DEFAULT_BROWSER_ENGINE) {
   return {
     runId,
     url,
+    browserEngine,
     startedAt: new Date(runId).toISOString(),
     finishedAt: null,
     status: "running",
@@ -99,6 +101,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeoutMs, anal
       runId,
       onProgress: handleProgress,
       stepTimeoutMs: timeoutMs,
+      browserEngine: state.options?.browserEngine,
     });
     runResult.stepsTotal = finalResult.stepsTotal;
     runResult.stepsRun = finalResult.stepsRun;
@@ -145,20 +148,23 @@ export async function startRun(
     deepReview = false,
     checkRtl = false,
     checkVisualDiff = false,
+    browserEngine,
   },
   deps = {}
 ) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
+  // Lève une erreur AVANT de créer le run si le moteur est inconnu.
+  const engine = resolveBrowserEngine(browserEngine);
 
   const runId = nextRunId();
   const state = {
     ticketText,
     ticketUrl,
     // Analyses demandées sur l'écran "New Run" (voir run-analysis.js).
-    options: { checkRtl, checkVisualDiff },
+    options: { checkRtl, checkVisualDiff, browserEngine: engine },
     // Provisoire : remplacé par le vrai scénario une fois généré par l'IA.
     scenario: { ticketSummary: truncate(ticketText), warnings: [], steps: [] },
-    runResult: makeRunResult(runId, url, "crawling"),
+    runResult: makeRunResult(runId, url, "crawling", engine),
   };
 
   // Le premier enregistrement doit réussir AVANT de répondre au frontend :
@@ -170,7 +176,7 @@ export async function startRun(
 
   async function execute() {
     try {
-      const crawlResult = await crawl(url, { navigationTimeoutMs: timeoutMs });
+      const crawlResult = await crawl(url, { navigationTimeoutMs: timeoutMs, browserEngine: engine });
       runResult.crawl = {
         title: crawlResult.title,
         elementCount: crawlResult.elementCount,
@@ -225,15 +231,25 @@ export async function startReplay(sourceRunId, deps = {}) {
     throw new Error(`Le run ${sourceRunId} n'a pas de scénario exécutable à rejouer.`);
   }
 
+  const engine = resolveBrowserEngine(source.options?.browserEngine);
   const runId = nextRunId();
   const state = {
     ticketText: source.ticketText,
     ticketUrl: source.ticketUrl ?? null,
     // Un rejeu existe pour être comparé au run d'origine : le diff visuel est donc toujours
     // activé (même scénario = comparaison fiable). L'analyse RTL suit le choix du run d'origine.
-    options: { checkRtl: Boolean(source.options?.checkRtl), checkVisualDiff: true },
+    // Le moteur est aussi hérité du run d'origine (Chromium pour les anciens runs qui n'en ont pas) :
+    // comparer un rejeu Firefox à une référence Chromium ne montrerait que des différences de rendu.
+    options: {
+      checkRtl: Boolean(source.options?.checkRtl),
+      checkVisualDiff: true,
+      browserEngine: engine,
+    },
     scenario,
-    runResult: { ...makeRunResult(runId, sourceRunResult.url, "running"), replayOf: sourceRunId },
+    runResult: {
+      ...makeRunResult(runId, sourceRunResult.url, "running", engine),
+      replayOf: sourceRunId,
+    },
   };
 
   await saveRun(runId, state);

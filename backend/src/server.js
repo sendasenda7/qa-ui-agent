@@ -10,11 +10,12 @@ import { compareRuns } from "./visual-diff.js";
 import { startRun, startReplay, getActiveRunCount } from "./run-executor.js";
 import { listRuns, readRun, saveRun, recoverInterruptedRuns } from "./run-store.js";
 import { checkPassword, issueToken, requireAuth, rateLimitLogin } from "./auth.js";
+import { isSupportedBrowserEngine, SUPPORTED_BROWSER_ENGINES } from "./browser.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Chaque run lance un vrai Chromium : on limite le nombre de runs simultanés
+// Chaque run lance un vrai navigateur (Chromium, Firefox ou WebKit) : on limite le nombre de runs simultanés
 // pour ne pas saturer la machine. Modifiable via MAX_CONCURRENT_RUNS dans backend/.env.
 const MAX_CONCURRENT_RUNS = Number(process.env.MAX_CONCURRENT_RUNS) || 2;
 
@@ -75,6 +76,20 @@ function isHttpUrl(value) {
   }
 }
 
+/**
+ * Moteur de navigateur demandé par le client : absent → undefined (le backend prendra Chromium).
+ * Renvoie { engine } si valide, { error } sinon, pour répondre en 400 avec un message clair.
+ */
+function parseBrowserEngine(value) {
+  if (value === undefined || value === null || value === "") return { engine: undefined };
+  if (!isSupportedBrowserEngine(value)) {
+    return {
+      error: `browserEngine invalide (attendu : ${SUPPORTED_BROWSER_ENGINES.join(", ")})`,
+    };
+  }
+  return { engine: value };
+}
+
 // Timeouts par défaut (ms) et bornes acceptées côté API. Le crawl (chargement de page)
 // et les étapes d'un scénario (clic, saisie...) n'ont pas le même défaut : le premier
 // attend un chargement de page complet, les secondes une simple interaction.
@@ -94,11 +109,14 @@ function parseTimeoutMs(value, fallback) {
 app.post(
   "/api/crawl",
   asyncRoute(async (req, res) => {
-    const { url, timeoutMs } = req.body;
+    const { url, timeoutMs, browserEngine } = req.body;
     if (!url) return res.status(400).json({ error: "url manquante" });
+    const parsedEngine = parseBrowserEngine(browserEngine);
+    if (parsedEngine.error) return res.status(400).json({ error: parsedEngine.error });
 
     const crawlResult = await crawlPage(url, {
       navigationTimeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_NAVIGATION_TIMEOUT_MS),
+      browserEngine: parsedEngine.engine,
     });
     res.json(crawlResult);
   })
@@ -108,13 +126,16 @@ app.post(
 app.post(
   "/api/plan",
   asyncRoute(async (req, res) => {
-    const { url, ticketText, timeoutMs, deepReview } = req.body;
+    const { url, ticketText, timeoutMs, deepReview, browserEngine } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
+    const parsedEngine = parseBrowserEngine(browserEngine);
+    if (parsedEngine.error) return res.status(400).json({ error: parsedEngine.error });
 
     const crawlResult = await crawlPage(url, {
       navigationTimeoutMs: parseTimeoutMs(timeoutMs, DEFAULT_NAVIGATION_TIMEOUT_MS),
+      browserEngine: parsedEngine.engine,
     });
     const scenario = await generateScenario(ticketText, crawlResult, { deepReview: !!deepReview });
     res.json({ crawlResult, scenario });
@@ -127,7 +148,16 @@ app.post(
 app.post(
   "/api/test-run",
   asyncRoute(async (req, res) => {
-    const { url, ticketText, timeoutMs, ticketUrl, deepReview, checkRtl, checkVisualDiff } = req.body;
+    const {
+      url,
+      ticketText,
+      timeoutMs,
+      ticketUrl,
+      deepReview,
+      checkRtl,
+      checkVisualDiff,
+      browserEngine,
+    } = req.body;
     if (!url || !ticketText) {
       return res.status(400).json({ error: "url et ticketText requis" });
     }
@@ -137,6 +167,8 @@ app.post(
     if (ticketUrl && !isHttpUrl(ticketUrl)) {
       return res.status(400).json({ error: "ticketUrl invalide (http:// ou https:// attendu)" });
     }
+    const parsedEngine = parseBrowserEngine(browserEngine);
+    if (parsedEngine.error) return res.status(400).json({ error: parsedEngine.error });
     if (getActiveRunCount() >= MAX_CONCURRENT_RUNS) {
       return res.status(429).json({
         error: `Déjà ${MAX_CONCURRENT_RUNS} runs en cours : attends qu'un run se termine avant d'en lancer un autre.`,
@@ -152,6 +184,7 @@ app.post(
       // Booleans stricts : un client qui enverrait la chaîne "false" ne doit pas activer l'analyse.
       checkRtl: checkRtl === true,
       checkVisualDiff: checkVisualDiff === true,
+      browserEngine: parsedEngine.engine,
     });
     res.status(202).json({ runId });
   })
@@ -178,10 +211,12 @@ app.post(
 app.post(
   "/api/check-i18n",
   asyncRoute(async (req, res) => {
-    const { url } = req.body;
+    const { url, browserEngine } = req.body;
     if (!url) return res.status(400).json({ error: "url manquante" });
+    const parsedEngine = parseBrowserEngine(browserEngine);
+    if (parsedEngine.error) return res.status(400).json({ error: parsedEngine.error });
 
-    const report = await checkLocalization(url);
+    const report = await checkLocalization(url, { browserEngine: parsedEngine.engine });
     res.json(report);
   })
 );

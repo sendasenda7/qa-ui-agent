@@ -9,6 +9,7 @@ import RunStepList from "../components/RunStepList.jsx";
 import { useRunPolling } from "../hooks/useRunPolling.js";
 import { useNow } from "../hooks/useNow.js";
 import { formatClock } from "../lib/format.js";
+import { browserEngineLabel } from "../lib/browser-engines.js";
 
 // Étape du bandeau Ticket → Explore → AI Plan → Run → Regressions → Report.
 const PIPELINE_STEP_BY_PHASE = { crawling: 2, planning: 3, running: 4, analyzing: 5 };
@@ -97,7 +98,7 @@ export default function LiveRunDetail() {
       </header>
 
       <section className="grid grid-cols-2 gap-3">
-        <InfoCell label="Navigateur" value="Chromium" />
+        <InfoCell label="Navigateur" value={browserEngineLabel(runResult.browserEngine)} />
         <InfoCell label="Environnement" value={getHost(runResult.url)} />
         <InfoCell label="Temps écoulé" value={formatClock(getElapsedMs(runResult, now))} />
         <InfoCell label="Étapes" value={hasSteps ? `${runResult.stepsRun} / ${runResult.stepsTotal}` : "—"} />

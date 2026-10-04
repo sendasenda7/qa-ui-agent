@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { launchBrowser } from "./browser.js";
 import { buildSelectorInBrowser } from "./crawler.js";
 
 const AR_TOGGLE_KEYWORDS = ["arabe", "العربية", " ar ", "(ar)"];
@@ -29,11 +29,11 @@ async function readPageLocalizationState(page) {
  * crawler, puis compare les deux états : direction RTL appliquée ? textes
  * identiques dans les deux langues (= oubli de traduction, comme NOTIF-21) ?
  */
-export async function checkLocalization(url) {
-  const browser = await chromium.launch();
+export async function checkLocalization(url, options = {}) {
+  const browser = await launchBrowser(options.browserEngine);
 
   // try/finally : quelle que soit l'étape qui échoue (page injoignable, bouton de bascule
-  // devenu introuvable, sélecteur périmé...), Chromium doit toujours être fermé. Sans ça,
+  // devenu introuvable, sélecteur périmé...), le navigateur doit toujours être fermé. Sans ça,
   // chaque échec sur l'écran Visual/RTL laisse un processus orphelin (même bug que crawler.js).
   try {
     const page = await browser.newPage();

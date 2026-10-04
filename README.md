@@ -40,7 +40,7 @@ utilisables ensuite. Timeout de navigation configurable (`navigationTimeoutMs`, 
 ```bash
 cd backend
 npm install
-npx playwright install chromium   # une seule fois
+npx playwright install chromium   # une seule fois (ajoute firefox et webkit pour le sélecteur de navigateur)
 npm run crawl -- https://the-internet.herokuapp.com/login
 ```
 
@@ -83,10 +83,15 @@ npm run plan -- https://staging.helpify.tn/auth/login "Vérifier que je peux cho
 
 ### 3. Exécution réelle (`runner.js`)
 
-Exécute le scénario dans un vrai Chromium : clic, saisie, sélection, vérifications. Capture un
+Exécute le scénario dans un vrai navigateur (Chromium par défaut, ou Firefox / WebKit choisi sur
+l'écran "New Run" ; le moteur choisi sert pour tout le run : crawl, exécution, analyse RTL, et
+un rejeu reprend celui du run d'origine) : clic, saisie, sélection, vérifications. Capture un
 screenshot après CHAQUE étape (succès ou échec) et s'arrête dès la première étape en échec.
 `assert_enabled` vérifie qu'un élément n'est plus désactivé (`disabled`, `aria-disabled`, ou
 curseur `not-allowed`).
+
+Le diff visuel ne compare que des runs du même moteur (le rendu diffère d'un moteur à l'autre) ;
+les anciens runs, sans moteur enregistré, comptent comme Chromium.
 
 Timeouts configurables (`stepTimeoutMs` par défaut 10s, `navigationTimeoutMs` par défaut 30s),
 utile sur un environnement de staging plus lent — réglable via l'écran "New Test" du frontend ou

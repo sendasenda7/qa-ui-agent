@@ -1,6 +1,7 @@
 import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { listRuns, readRun } from "./run-store.js";
+import { resolveBrowserEngine } from "./browser.js";
 
 /**
  * Analyses optionnelles exécutées APRÈS le scénario d'un run, selon les interrupteurs
@@ -35,14 +36,16 @@ function hasScreenshots(run) {
  * Trouve le run de référence pour le diff visuel :
  *  1. un rejeu (replayOf) se compare TOUJOURS au run d'origine : c'est le même scénario,
  *     donc la comparaison est fiable ;
- *  2. sinon, le run terminé le plus récent, plus ancien que celui-ci, sur la même URL et
- *     avec le même texte de ticket. Le scénario a pu être régénéré différemment par l'IA :
+ *  2. sinon, le run terminé le plus récent, plus ancien que celui-ci, sur la même URL,
+ *     avec le même texte de ticket et le même moteur de navigateur (Chromium, Firefox et
+ *     WebKit ne rendent pas les pages au pixel près : les comparer n'aurait pas de sens). Le scénario a pu être régénéré différemment par l'IA :
  *     compareRuns le signale alors dans ses avertissements.
  * Renvoie null s'il n'y a aucune référence exploitable.
  */
 export async function findBaselineRun(state, deps = {}) {
   const { list = listRuns, read = readRun } = deps;
   const { runResult, ticketText } = state;
+  const engine = resolveBrowserEngine(state.options?.browserEngine);
 
   if (runResult.replayOf) {
     const source = await read(runResult.replayOf);
@@ -60,7 +63,14 @@ export async function findBaselineRun(state, deps = {}) {
 
   for (const candidate of candidates) {
     const run = await read(candidate.runId);
-    if (run && run.ticketText === ticketText && hasScreenshots(run)) return run;
+    if (
+      run &&
+      run.ticketText === ticketText &&
+      resolveBrowserEngine(run.options?.browserEngine) === engine &&
+      hasScreenshots(run)
+    ) {
+      return run;
+    }
   }
   return null;
 }
@@ -76,7 +86,10 @@ export async function runAnalysis(state, persist, deps = {}) {
 
   if (options?.checkRtl) {
     try {
-      runResult.rtl = { status: "done", report: await localize(runResult.url) };
+      runResult.rtl = {
+        status: "done",
+        report: await localize(runResult.url, { browserEngine: options.browserEngine }),
+      };
     } catch (err) {
       console.error(`[run ${runResult.runId}] analyse RTL impossible :`, err.message);
       runResult.rtl = { status: "error", error: err.message };
@@ -92,7 +105,7 @@ export async function runAnalysis(state, persist, deps = {}) {
           status: "no_baseline",
           reason: runResult.replayOf
             ? "Le run d'origine n'a pas de capture d'écran à comparer."
-            : "Aucun run précédent avec la même URL et le même ticket : ce run servira de référence pour les prochains.",
+            : "Aucun run précédent avec la même URL, le même ticket et le même navigateur : ce run servira de référence pour les prochains.",
         };
       } else {
         const report = await compare(baseline, state);

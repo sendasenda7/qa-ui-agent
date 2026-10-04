@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { launchBrowser, resolveBrowserEngine } from "./browser.js";
 import { mkdir } from "fs/promises";
 
 /**
@@ -11,6 +11,7 @@ import { mkdir } from "fs/promises";
  *  - stepTimeoutMs        : délai max par action/vérification (défaut 10s) — à augmenter
  *                           sur une page lente à répondre (staging chargé, réseau faible) ;
  *  - navigationTimeoutMs  : délai max pour navigate/go_back (défaut 30s) ;
+ *  - browserEngine        : "chromium" (défaut) | "firefox" | "webkit" ;
  *  - onProgress           : callback appelé au fil de l'exécution, pour suivre le run en direct :
  *                             { type: "step_start", index, step }
  *                             { type: "step_end",   index, result }
@@ -22,6 +23,7 @@ export async function runScenario(url, scenario, options = {}) {
     runId = Date.now(),
     stepTimeoutMs = 10000,
     navigationTimeoutMs = 30000,
+    browserEngine,
     onProgress,
   } = options;
 
@@ -37,7 +39,7 @@ export async function runScenario(url, scenario, options = {}) {
 
   await mkdir(screenshotDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless });
+  const browser = await launchBrowser(browserEngine, { headless });
   const results = [];
   let overallStatus = "passed";
 
@@ -86,13 +88,14 @@ export async function runScenario(url, scenario, options = {}) {
       if (stepResult.status === "failed") break;
     }
   } finally {
-    // Même si quelque chose plante en cours de route, on ne laisse jamais un Chromium orphelin.
+    // Même si quelque chose plante en cours de route, on ne laisse jamais un navigateur orphelin.
     await browser.close();
   }
 
   return {
     runId,
     url,
+    browserEngine: resolveBrowserEngine(browserEngine),
     startedAt: new Date(runId).toISOString(),
     status: overallStatus,
     stepsTotal: scenario.steps.length,
