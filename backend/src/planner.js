@@ -40,6 +40,17 @@ export function isDynamicAssertionSelector(selector) {
   return /^role=(alert|status)$/.test(selector) || /^text="(?:[^"\\]|\\.){1,120}"$/.test(selector);
 }
 
+/**
+ * Les modèles recopient parfois un sélecteur tel qu'il apparaît dans le prompt (JSON), c'est-à-dire
+ * avec des guillemets précédés d'un antislash : text=\\"Continuer\\" au lieu de text="Continuer".
+ * Un tel sélecteur n'existe pas tel quel ; sa version décodée, si. Cette fonction renvoie la version
+ * décodée (ou null s'il n'y a rien à décoder).
+ */
+export function unescapeQuotedSelector(selector) {
+  if (typeof selector !== "string" || !/\\+"/.test(selector)) return null;
+  return selector.replace(/\\+"/g, '"');
+}
+
 const STEP_TYPES = [
   "navigate",
   "click",
@@ -79,6 +90,11 @@ sous l'une de ces deux formes exactes :
   - text="le texte exact attendu à l'écran"
 N'utilise JAMAIS ces formes pour click, fill ou select : ces actions n'acceptent que les sélecteurs
 de la liste. Pour assert_text, "value" doit contenir le texte attendu (jamais vide).
+
+IMPORTANT sur la copie des sélecteurs : la liste fournie est du JSON, donc un guillemet y apparaît
+sous la forme \\" . Recopie le sélecteur DÉCODÉ, avec de simples guillemets : si tu lis
+"text=\\"Je suis un Donateur\\"" dans la liste, le sélecteur est text="Je suis un Donateur".
+Ton propre JSON de réponse échappera ensuite ces guillemets normalement.
 
 Réponds STRICTEMENT en JSON valide, sans aucun texte autour, selon ce format :
 
@@ -387,8 +403,22 @@ export function validateScenario(scenario, crawlResult) {
     return true;
   });
 
-  const checkedSteps = wellFormedSteps.map((step) => {
+  const checkedSteps = wellFormedSteps.map((originalStep) => {
+    let step = originalStep;
     const needsSelector = !["navigate", "go_back"].includes(step.type);
+
+    // Guillemets protégés à tort (voir unescapeQuotedSelector) : on ne décode que si le sélecteur
+    // tel quel n'est ni connu ni une forme dynamique valide, et seulement si la version décodée l'est.
+    if (needsSelector && !knownSelectors.has(step.selector)) {
+      const decoded = unescapeQuotedSelector(step.selector);
+      const asIs = ASSERT_STEP_TYPES.includes(step.type) && isDynamicAssertionSelector(step.selector);
+      if (decoded && !asIs) {
+        const decodedIsOk =
+          knownSelectors.has(decoded) ||
+          (ASSERT_STEP_TYPES.includes(step.type) && isDynamicAssertionSelector(decoded));
+        if (decodedIsOk) step = { ...step, selector: decoded };
+      }
+    }
     const isDynamic =
       needsSelector &&
       !knownSelectors.has(step.selector) &&
