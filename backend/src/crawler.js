@@ -321,6 +321,73 @@ export async function upgradeToSemanticSelectors(page, elements) {
 }
 
 /**
+ * Textes visibles de la page qui ne sont PAS interactifs (titres, alertes, messages d'erreur,
+ * toasts...) : ce sont eux qu'un ticket demande de vérifier ("le titre affiche...", "un message
+ * d'erreur est visible"). S'exécute dans la page. Limité pour ne pas gonfler le prompt de l'IA.
+ */
+function collectTextInBrowser() {
+  const MAX_ITEMS = 40;
+  const SELECTOR = [
+    "h1", "h2", "h3", "h4", "[role=heading]",
+    "[role=alert]", "[role=status]", "[aria-live]:not([aria-live=off])",
+    "mat-error", "[class*=error i]", "[class*=invalid-feedback i]", "[class*=alert i]",
+    "[class*=toast i]", "[class*=snack i]", "[class*=notification i]", "[class*=message i]",
+  ].join(",");
+
+  const seen = new Set();
+  const out = [];
+  for (const el of document.querySelectorAll(SELECTOR)) {
+    const style = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    if (style.display === "none" || style.visibility === "hidden" || rect.width === 0 || rect.height === 0) continue;
+    const text = (el.innerText || "").trim().split("\n")[0].trim().slice(0, 120);
+    if (text.length < 2 || seen.has(text)) continue;
+    seen.add(text);
+
+    const tag = el.tagName.toLowerCase();
+    const explicitRole = el.getAttribute("role");
+    const live = el.getAttribute("aria-live");
+    let kind = "texte";
+    if (/^h[1-6]$/.test(tag) || explicitRole === "heading") kind = "titre";
+    if (explicitRole === "alert" || explicitRole === "status" || live === "assertive" || live === "polite" || tag === "mat-error" || /error|invalid|alert|toast|snack|notification/i.test(el.className || "")) kind = "message";
+    out.push({ tag, kind, ariaRole: explicitRole || (kind === "titre" ? "heading" : null), text });
+    if (out.length >= MAX_ITEMS) break;
+  }
+  return out;
+}
+
+/** Sélecteurs candidats pour un texte visible (fonction pure, testée sans navigateur). */
+export function buildTextCandidates(item) {
+  const candidates = [];
+  if (item.ariaRole === "heading" || item.kind === "titre") {
+    candidates.push(`role=heading[name=${quoteForSelector(item.text)}]`);
+  }
+  if (item.ariaRole === "alert" || item.ariaRole === "status") {
+    candidates.push(`role=${item.ariaRole}`);
+  }
+  candidates.push(`text=${quoteForSelector(item.text)}`);
+  return candidates;
+}
+
+/** Pour chaque texte, garde le premier sélecteur qui désigne EXACTEMENT un élément de la page. */
+export async function resolveTextSelectors(page, items) {
+  const resolved = [];
+  for (const item of items) {
+    for (const selector of buildTextCandidates(item)) {
+      try {
+        if ((await page.locator(selector).count()) === 1) {
+          resolved.push({ ...item, selector });
+          break;
+        }
+      } catch {
+        // sélecteur refusé par Playwright : candidat suivant
+      }
+    }
+  }
+  return resolved;
+}
+
+/**
  * Crawle une URL et retourne la liste des éléments interactifs détectés,
  * avec le sélecteur le plus stable trouvé pour chacun.
  *
@@ -353,6 +420,7 @@ export async function crawlPage(url, options = {}) {
 
     const elements = await page.evaluate(buildSelectorInBrowser);
     await upgradeToSemanticSelectors(page, elements);
+    const textElements = await resolveTextSelectors(page, await page.evaluate(collectTextInBrowser));
 
     await mkdir("debug-screenshots", { recursive: true });
     const screenshotPath = `debug-screenshots/${Date.now()}.png`;
@@ -364,6 +432,7 @@ export async function crawlPage(url, options = {}) {
       crawledAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt,
       elementCount: elements.length,
+      textElements,
       screenshotPath,
       elements,
     };

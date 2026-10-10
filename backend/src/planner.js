@@ -26,6 +26,20 @@ function retryDelayMs(attempt, response) {
   return BASE_DELAY_MS * 2 ** attempt;
 }
 
+// Étapes de vérification : seules à pouvoir cibler un texte ou un message qui apparaît après coup.
+const ASSERT_STEP_TYPES = ["assert_visible", "assert_text"];
+
+/**
+ * Sélecteur "dynamique" autorisé pour une vérification, même absent du crawl : un message qui
+ * apparaît après une action (erreur, confirmation). Formes acceptées, et uniquement celles-là :
+ * role=alert, role=status, text="...". Un texte inventé ne produit PAS un faux "réussi" : l'étape
+ * échoue simplement (élément introuvable).
+ */
+export function isDynamicAssertionSelector(selector) {
+  if (typeof selector !== "string") return false;
+  return /^role=(alert|status)$/.test(selector) || /^text="(?:[^"\\]|\\.){1,120}"$/.test(selector);
+}
+
 const STEP_TYPES = [
   "navigate",
   "click",
@@ -53,6 +67,18 @@ Ta mission : produire un scénario de test structuré en JSON, qui utilise UNIQU
 sélecteurs listés. Tu n'as PAS le droit d'inventer un sélecteur qui n'est pas dans la liste.
 Si le ticket demande une action pour laquelle aucun élément ne correspond dans la liste,
 signale-le dans le champ "warnings" plutôt que d'inventer.
+
+Pour VÉRIFIER un texte (assert_visible / assert_text) tu disposes aussi de la liste des TEXTES
+VISIBLES de la page (titres, messages...), avec leur sélecteur : utilise-les tels quels.
+
+Un message qui n'apparaît QU'APRÈS une action (message d'erreur après un envoi, confirmation,
+toast...) ne peut pas être dans la liste. Pour celui-là, et seulement pour une étape
+assert_visible ou assert_text placée APRÈS l'action qui le provoque, tu peux écrire le sélecteur
+sous l'une de ces deux formes exactes :
+  - role=alert   ou   role=status
+  - text="le texte exact attendu à l'écran"
+N'utilise JAMAIS ces formes pour click, fill ou select : ces actions n'acceptent que les sélecteurs
+de la liste. Pour assert_text, "value" doit contenir le texte attendu (jamais vide).
 
 Réponds STRICTEMENT en JSON valide, sans aucun texte autour, selon ce format :
 
@@ -92,6 +118,12 @@ function buildUserPrompt(ticketText, crawlResult) {
     disabledLooking: el.disabledLooking,
   }));
 
+  const simplifiedTexts = (crawlResult.textElements || []).map((t) => ({
+    selector: t.selector,
+    kind: t.kind,
+    text: t.text,
+  }));
+
   return `TICKET :
 """
 ${ticketText}
@@ -99,8 +131,11 @@ ${ticketText}
 
 PAGE ANALYSÉE : ${crawlResult.url}
 
-ÉLÉMENTS INTERACTIFS DISPONIBLES (liste fermée — n'utilise que ces sélecteurs) :
-${JSON.stringify(simplifiedElements, null, 2)}`;
+ÉLÉMENTS INTERACTIFS DISPONIBLES (liste fermée — n'utilise que ces sélecteurs pour click/fill/select) :
+${JSON.stringify(simplifiedElements, null, 2)}
+
+TEXTES VISIBLES (pour assert_visible / assert_text) :
+${JSON.stringify(simplifiedTexts, null, 2)}`;
 }
 
 /**
@@ -320,7 +355,10 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
  * message moins parlant pour l'utilisateur.
  */
 export function validateScenario(scenario, crawlResult) {
-  const knownSelectors = new Set(crawlResult.elements.map((el) => el.selector));
+  const knownSelectors = new Set([
+    ...crawlResult.elements.map((el) => el.selector),
+    ...(crawlResult.textElements || []).map((t) => t.selector),
+  ]);
   // Sélecteur de secours éventuel de chaque élément (voir crawler.js) : copié dans l'étape pour que
   // le runner puisse s'en servir sans avoir besoin du crawl.
   const fallbackBySelector = new Map(
@@ -351,7 +389,12 @@ export function validateScenario(scenario, crawlResult) {
 
   const checkedSteps = wellFormedSteps.map((step) => {
     const needsSelector = !["navigate", "go_back"].includes(step.type);
-    const selectorIsValid = !needsSelector || knownSelectors.has(step.selector);
+    const isDynamic =
+      needsSelector &&
+      !knownSelectors.has(step.selector) &&
+      ASSERT_STEP_TYPES.includes(step.type) &&
+      isDynamicAssertionSelector(step.selector);
+    const selectorIsValid = !needsSelector || knownSelectors.has(step.selector) || isDynamic;
     const description = step.description || "(étape sans description)";
 
     if (needsSelector && !selectorIsValid) {
@@ -367,6 +410,7 @@ export function validateScenario(scenario, crawlResult) {
       ...step,
       description,
       selectorValid: selectorIsValid,
+      ...(isDynamic ? { selectorKind: "dynamic" } : {}),
       ...(fallbackSelector ? { fallbackSelector } : {}),
     };
   });
