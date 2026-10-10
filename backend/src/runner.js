@@ -124,6 +124,10 @@ const PRIMARY_SELECTOR_PROBE_MS = 2000;
  */
 export async function resolveLocator(page, step, stepTimeoutMs) {
   const primary = page.locator(step.selector);
+  // Message apparu après une action : plusieurs éléments peuvent contenir le même texte
+  // (ex. un toast et un message sous le champ) ; on vérifie le premier au lieu d'échouer en
+  // "strict mode violation".
+  if (step.selectorKind === "dynamic") return primary.first();
   if (!step.fallbackSelector) return primary;
   try {
     await primary.first().waitFor({ state: "attached", timeout: Math.min(stepTimeoutMs, PRIMARY_SELECTOR_PROBE_MS) });

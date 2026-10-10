@@ -173,6 +173,18 @@ Playwright). Quand un sélecteur lisible remplace un chemin CSS fragile ou un `i
 trouve plus rien (par ex. le site vient de passer en arabe, donc le texte des boutons a changé),
 le runner essaie automatiquement le secours.
 
+## Vérifier un texte ou un message
+
+Le crawl renvoie aussi `textElements` : les textes **visibles et non cliquables** de la page (titres,
+alertes, bannières, messages d'erreur déjà affichés), chacun avec un sélecteur vérifié unique
+(`role=heading[name="Connexion"]`, `text="..."`). L'IA les utilise pour `assert_visible` / `assert_text`.
+
+Un message qui n'apparaît **qu'après une action** (erreur après un envoi, confirmation, toast) ne peut
+pas être dans le crawl. Pour lui, et seulement pour `assert_visible` / `assert_text`, le scénario peut
+utiliser `role=alert`, `role=status` ou `text="texte exact"`. Ces étapes sont marquées
+`selectorKind: "dynamic"`. Un texte inventé ne donne jamais un faux « réussi » : l'étape échoue
+(élément introuvable). `click`, `fill` et `select` restent limités aux éléments listés par le crawl.
+
 ## Configuration (`backend/.env`)
 
 Copie `.env.example` en `.env`. Variables obligatoires : `GROQ_API_KEY`, `AUTH_PASSWORD`, `JWT_SECRET`
