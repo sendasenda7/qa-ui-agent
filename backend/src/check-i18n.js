@@ -1,3 +1,4 @@
+import "./bootstrap.js";
 import { checkLocalization } from "./localization-check.js";
 
 async function main() {

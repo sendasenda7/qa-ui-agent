@@ -1,3 +1,4 @@
+import "./bootstrap.js";
 import { loadEnvFile } from "./env.js";
 loadEnvFile(".env");
 

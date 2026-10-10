@@ -7,6 +7,7 @@ import ProgressBar from "../components/ProgressBar.jsx";
 import RunAnalysis from "../components/RunAnalysis.jsx";
 import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
+import { browserEngineLabel } from "../lib/browser-engines.js";
 
 export default function ReportDetail() {
   const { id } = useParams();
@@ -144,7 +145,7 @@ export default function ReportDetail() {
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-faint">
           <span>{new Date(runResult.startedAt).toLocaleString("fr-FR")}</span>
           <span>·</span>
-          <span>Chromium</span>
+          <span>{browserEngineLabel(runResult.browserEngine)}</span>
           <span>·</span>
           <span>{formatDuration(totalDurationMs)} au total</span>
         </div>

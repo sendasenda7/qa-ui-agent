@@ -4,14 +4,13 @@ import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2 } from
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { startTestRun } from "../lib/api.js";
+import { BROWSER_ENGINES, DEFAULT_BROWSER_ENGINE } from "../lib/browser-engines.js";
 
 const PROMPT_TEMPLATES = [
   "Tester le multi-langue FR/AR",
   "Vérifier la position du bouton de validation",
   "Vérifier la persistance de session",
 ];
-
-const BROWSER_ENGINES = ["Chromium", "Firefox", "WebKit"];
 
 export default function NewRun() {
   const navigate = useNavigate();
@@ -21,7 +20,7 @@ export default function NewRun() {
   );
   const [ticketText, setTicketText] = useState("");
   const [ticketUrl, setTicketUrl] = useState("");
-  const [browserEngine, setBrowserEngine] = useState("Chromium");
+  const [browserEngine, setBrowserEngine] = useState(DEFAULT_BROWSER_ENGINE);
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
   const [deepReview, setDeepReview] = useState(false);
@@ -44,6 +43,7 @@ export default function NewRun() {
         deepReview,
         checkRtl,
         checkVisualDiff,
+        browserEngine,
       });
       navigate(`/live-runs/${runId}`);
     } catch (err) {
@@ -142,24 +142,20 @@ export default function NewRun() {
               <div className="grid grid-cols-3 gap-2">
                 {BROWSER_ENGINES.map((engine) => (
                   <button
-                    key={engine}
+                    key={engine.id}
                     type="button"
-                    onClick={() => setBrowserEngine(engine)}
+                    onClick={() => setBrowserEngine(engine.id)}
+                    aria-pressed={browserEngine === engine.id}
                     className={`text-sm rounded-lg py-2 border transition-colors ${
-                      browserEngine === engine
+                      browserEngine === engine.id
                         ? "border-accent-blue bg-accent-blue/10 text-text"
                         : "border-border text-text-muted"
                     }`}
                   >
-                    {engine}
+                    {engine.label}
                   </button>
                 ))}
               </div>
-              {browserEngine !== "Chromium" && (
-                <span className="text-[11px] text-warning">
-                  Seul Chromium est branché sur le backend pour l'instant.
-                </span>
-              )}
             </div>
 
             <div className="flex flex-col gap-1.5">

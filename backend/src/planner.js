@@ -321,6 +321,11 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
  */
 export function validateScenario(scenario, crawlResult) {
   const knownSelectors = new Set(crawlResult.elements.map((el) => el.selector));
+  // Sélecteur de secours éventuel de chaque élément (voir crawler.js) : copié dans l'étape pour que
+  // le runner puisse s'en servir sans avoir besoin du crawl.
+  const fallbackBySelector = new Map(
+    crawlResult.elements.filter((el) => el.fallbackSelector).map((el) => [el.selector, el.fallbackSelector])
+  );
   const validationWarnings = [...(scenario.warnings || [])];
 
   if (!Array.isArray(scenario.steps)) {
@@ -344,7 +349,7 @@ export function validateScenario(scenario, crawlResult) {
     return true;
   });
 
-  const withSelectorCheck = wellFormedSteps.map((step) => {
+  const checkedSteps = wellFormedSteps.map((step) => {
     const needsSelector = !["navigate", "go_back"].includes(step.type);
     const selectorIsValid = !needsSelector || knownSelectors.has(step.selector);
     const description = step.description || "(étape sans description)";
@@ -356,11 +361,27 @@ export function validateScenario(scenario, crawlResult) {
       );
     }
 
+    const fallbackSelector = selectorIsValid ? fallbackBySelector.get(step.selector) : undefined;
+
     return {
       ...step,
       description,
       selectorValid: selectorIsValid,
+      ...(fallbackSelector ? { fallbackSelector } : {}),
     };
+  });
+
+  // Garde-fou anti-faux-positif : un "assert_text" sans texte attendu passerait TOUJOURS
+  // ("abc".includes("") vaut true) et afficherait un faux "réussi". On le retire.
+  const withSelectorCheck = checkedSteps.filter((step) => {
+    if (step.type !== "assert_text") return true;
+    const hasExpectedText = typeof step.value === "string" && step.value.trim() !== "";
+    if (!hasExpectedText) {
+      validationWarnings.push(
+        `Étape retirée : "assert_text" sans texte attendu sur "${step.selector}" (étape "${step.description}") — elle aurait toujours réussi.`
+      );
+    }
+    return hasExpectedText;
   });
 
   // Garde-fou anti-incohérence : un "assert_enabled" n'a de sens que s'il vérifie

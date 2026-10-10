@@ -1,7 +1,8 @@
 import jwt from "jsonwebtoken";
 import { timingSafeEqual } from "crypto";
 
-const TOKEN_LIFETIME = "7d";
+// Durée de validité d'une session, réglable via JWT_LIFETIME (ex. "12h") dans backend/.env.
+const DEFAULT_TOKEN_LIFETIME = "7d";
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_MS = 60_000; // 1 minute de blocage après trop d'essais
 
@@ -48,7 +49,10 @@ export function checkPassword(password) {
 }
 
 export function issueToken() {
-  return jwt.sign({ role: "team" }, getSecret(), { expiresIn: TOKEN_LIFETIME });
+  return jwt.sign({ role: "team" }, getSecret(), {
+    algorithm: "HS256",
+    expiresIn: process.env.JWT_LIFETIME || DEFAULT_TOKEN_LIFETIME,
+  });
 }
 
 /**
@@ -61,6 +65,31 @@ export function issueToken() {
  * plus partagé entre elles).
  */
 const loginAttemptsByIp = new Map();
+const MAX_TRACKED_IPS = 10_000;
+let lastPurgeAt = 0;
+
+/**
+ * Supprime les compteurs devenus inutiles (blocage expiré) : sans cela, la Map grossissait
+ * indéfiniment, une entrée par IP ayant déjà échoué une fois. Une IP non bloquée et sans échec
+ * récent ne coûte rien à oublier ; en cas de saturation, on repart de zéro plutôt que de
+ * consommer toute la mémoire.
+ */
+function purgeLoginAttempts(now = Date.now()) {
+  if (now - lastPurgeAt < LOGIN_LOCKOUT_MS && loginAttemptsByIp.size < MAX_TRACKED_IPS) return;
+  lastPurgeAt = now;
+  for (const [ip, entry] of loginAttemptsByIp) {
+    const lockExpired = entry.lockedUntil && entry.lockedUntil <= now;
+    const staleFailures = !entry.lockedUntil && now - (entry.lastFailureAt || 0) > LOGIN_LOCKOUT_MS * 10;
+    if (lockExpired || staleFailures) loginAttemptsByIp.delete(ip);
+  }
+  if (loginAttemptsByIp.size >= MAX_TRACKED_IPS) loginAttemptsByIp.clear();
+}
+
+/** Pour les tests. */
+export function resetLoginAttempts() {
+  loginAttemptsByIp.clear();
+  lastPurgeAt = 0;
+}
 
 function getLoginAttempts(ip) {
   const entry = loginAttemptsByIp.get(ip);
@@ -73,6 +102,7 @@ function getLoginAttempts(ip) {
 
 /** Middleware Express : bloque une IP après trop d'échecs de mot de passe. */
 export function rateLimitLogin(req, res, next) {
+  purgeLoginAttempts();
   const ip = req.ip;
   const { count, lockedUntil } = getLoginAttempts(ip);
 
@@ -87,7 +117,11 @@ export function rateLimitLogin(req, res, next) {
   req.recordLoginFailure = () => {
     const attempts = count + 1;
     const lockedUntilNext = attempts >= MAX_LOGIN_ATTEMPTS ? Date.now() + LOGIN_LOCKOUT_MS : 0;
-    loginAttemptsByIp.set(ip, { count: attempts, lockedUntil: lockedUntilNext });
+    loginAttemptsByIp.set(ip, {
+      count: attempts,
+      lockedUntil: lockedUntilNext,
+      lastFailureAt: Date.now(),
+    });
   };
   req.recordLoginSuccess = () => loginAttemptsByIp.delete(ip);
 
@@ -95,32 +129,66 @@ export function rateLimitLogin(req, res, next) {
 }
 
 /**
- * Récupère le token envoyé par le client, sous l'une des deux formes possibles :
+ * Récupère le token envoyé par le client :
  *  - header "Authorization: Bearer <token>" (tous les appels à l'API, via lib/api.js) ;
- *  - paramètre d'URL "?token=" (uniquement pour les fichiers statiques — captures
- *    d'écran, diffs — car une balise <img src="..."> ne peut pas envoyer de header
- *    personnalisé ; c'est la seule façon de les protéger sans réécrire tout l'affichage
- *    des captures en fetch+blob côté frontend).
+ *  - paramètre d'URL "?token=" UNIQUEMENT si `allowQuery` est vrai, c'est-à-dire pour les
+ *    fichiers statiques (captures d'écran) : une balise <img src="..."> ne peut pas envoyer
+ *    de header. Un token dans l'URL finit dans les logs, l'historique du navigateur et les
+ *    en-têtes Referer : on ne l'accepte donc plus sur les routes /api/*.
  */
-function extractToken(req) {
+function extractToken(req, { allowQuery }) {
   const header = req.headers.authorization || "";
   if (header.startsWith("Bearer ")) return header.slice(7);
-  if (typeof req.query.token === "string") return req.query.token;
+  if (allowQuery && typeof req.query.token === "string") return req.query.token;
   return null;
 }
 
-/** Middleware Express : exige un token valide (header Authorization ou ?token=). */
-export function requireAuth(req, res, next) {
-  const token = extractToken(req);
+function makeAuthMiddleware({ allowQuery }) {
+  return function authMiddleware(req, res, next) {
+    const token = extractToken(req, { allowQuery });
 
-  if (!token) {
-    return res.status(401).json({ error: "Authentification requise" });
-  }
+    if (!token) {
+      return res.status(401).json({ error: "Authentification requise" });
+    }
 
-  try {
-    jwt.verify(token, getSecret());
-    next();
-  } catch {
-    return res.status(401).json({ error: "Session expirée ou invalide, reconnecte-toi" });
+    try {
+      jwt.verify(token, getSecret(), { algorithms: ["HS256"] });
+      next();
+    } catch (err) {
+      // Une erreur de configuration (secret manquant) n'est pas un problème de session.
+      if (err.message?.includes("JWT_SECRET manquant")) {
+        return res.status(500).json({ error: err.message });
+      }
+      return res.status(401).json({ error: "Session expirée ou invalide, reconnecte-toi" });
+    }
+  };
+}
+
+/** Middleware Express : exige un token valide dans le header Authorization (routes /api/*). */
+export const requireAuth = makeAuthMiddleware({ allowQuery: false });
+
+/** Idem, mais accepte aussi ?token= (fichiers statiques affichés dans des balises <img>). */
+export const requireAuthForFiles = makeAuthMiddleware({ allowQuery: true });
+
+const PLACEHOLDER_VALUES = new Set([
+  "colle_ta_clé_ici",
+  "choisis_un_mot_de_passe",
+  "colle_une_valeur_aleatoire_generee_ici",
+]);
+
+/**
+ * Avertissements de configuration à afficher au démarrage (liste vide = tout va bien).
+ * On ne bloque pas le démarrage : on rend juste le problème impossible à rater.
+ */
+export function getAuthConfigWarnings(env = process.env) {
+  const warnings = [];
+  if (!env.AUTH_PASSWORD) warnings.push("AUTH_PASSWORD manquant : plus personne ne pourra se connecter.");
+  else if (PLACEHOLDER_VALUES.has(env.AUTH_PASSWORD)) {
+    warnings.push("AUTH_PASSWORD a encore la valeur d'exemple de .env.example : choisis-en un vrai.");
   }
+  if (!env.JWT_SECRET) warnings.push("JWT_SECRET manquant : aucune session ne peut être créée.");
+  else if (PLACEHOLDER_VALUES.has(env.JWT_SECRET) || env.JWT_SECRET.length < 32) {
+    warnings.push("JWT_SECRET est trop court ou a la valeur d'exemple : génère une chaîne aléatoire de 32+ caractères.");
+  }
+  return warnings;
 }

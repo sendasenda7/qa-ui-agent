@@ -12,6 +12,8 @@ import { mkdir, readFile, readdir, rename, writeFile } from "fs/promises";
 
 const RUNS_DIR = "runs";
 const RUN_ID_PATTERN = /^\d+$/;
+// Seuls les fichiers "<runId>.json" sont des runs (les notes vivent dans "<runId>.notes.json").
+const RUN_FILE_PATTERN = /^\d+\.json$/;
 const TRANSIENT_FS_ERRORS = new Set(["EPERM", "EBUSY", "EACCES"]);
 
 function sleep(ms) {
@@ -41,6 +43,37 @@ function runPath(runId) {
   return `${RUNS_DIR}/${runId}.json`;
 }
 
+function notesPath(runId) {
+  return `${RUNS_DIR}/${runId}.notes.json`;
+}
+
+/**
+ * Les notes manuelles sont stockées À PART du run. Le run est réécrit en entier, sans arrêt,
+ * par son exécution en cours (une écriture par étape) : y mettre aussi les notes revenait à
+ * les écraser, ou à faire revenir l'état du run en arrière, dès qu'un PATCH /notes arrivait
+ * pendant l'exécution (lecture-modification-écriture non atomique).
+ */
+export async function saveNotes(runId, notes) {
+  if (!isValidRunId(runId)) throw new Error(`runId invalide : ${runId}`);
+
+  await mkdir(RUNS_DIR, { recursive: true });
+  const finalPath = notesPath(runId);
+  const tempPath = `${finalPath}.tmp`;
+
+  await writeFile(tempPath, JSON.stringify({ notes }));
+  await withRetry(() => rename(tempPath, finalPath));
+}
+
+async function readNotes(runId) {
+  try {
+    const raw = await withRetry(() => readFile(notesPath(runId), "utf-8"));
+    const { notes } = JSON.parse(raw);
+    return typeof notes === "string" ? notes : null;
+  } catch {
+    return null; // pas de notes (ou fichier illisible) : on ne casse pas la lecture du run
+  }
+}
+
 export async function saveRun(runId, data) {
   if (!isValidRunId(runId)) throw new Error(`runId invalide : ${runId}`);
 
@@ -58,7 +91,11 @@ export async function readRun(runId) {
 
   try {
     const raw = await withRetry(() => readFile(runPath(runId), "utf-8"));
-    return JSON.parse(raw);
+    const run = JSON.parse(raw);
+    // Les notes séparées priment ; les anciens runs gardent leurs notes intégrées (run.notes).
+    const notes = await readNotes(runId);
+    if (notes !== null) run.notes = notes;
+    return run;
   } catch (err) {
     if (err.code === "ENOENT") return null;
     throw err;
@@ -71,7 +108,7 @@ export async function readRun(runId) {
  */
 export async function listRuns({ status } = {}) {
   await mkdir(RUNS_DIR, { recursive: true });
-  const files = (await readdir(RUNS_DIR)).filter((file) => file.endsWith(".json"));
+  const files = (await readdir(RUNS_DIR)).filter((file) => RUN_FILE_PATTERN.test(file));
 
   const summaries = await Promise.all(
     files.map(async (file) => {

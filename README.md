@@ -15,9 +15,14 @@ qa-ui-agent/
 │   │   ├── runner.js            # Étape 3 : exécution réelle du scénario (Playwright)
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
-│   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json)
-│   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay)
-│   │   └── server.js            # API Express consommée par le frontend
+│   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay) + limite de runs
+│   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel)
+│   │   ├── auth.js              # Mot de passe d'équipe, JWT, anti-bruteforce
+│   │   ├── url-guard.js         # Garde-fou SSRF : quelles URLs le serveur accepte d'ouvrir
+│   │   ├── app.js               # Routes Express (createApp, testable)
+│   │   ├── bootstrap.js         # Se place dans backend/ (dossiers de données toujours au bon endroit)
+│   │   └── server.js            # Démarre l'API sur un port
 │   └── test/                    # Tests unitaires (node:test)
 └── frontend/                    # UI React (Vite + Tailwind)
     └── src/
@@ -40,7 +45,7 @@ utilisables ensuite. Timeout de navigation configurable (`navigationTimeoutMs`, 
 ```bash
 cd backend
 npm install
-npx playwright install chromium   # une seule fois
+npx playwright install chromium   # une seule fois (ajoute firefox et webkit pour le sélecteur de navigateur)
 npm run crawl -- https://the-internet.herokuapp.com/login
 ```
 
@@ -83,10 +88,15 @@ npm run plan -- https://staging.helpify.tn/auth/login "Vérifier que je peux cho
 
 ### 3. Exécution réelle (`runner.js`)
 
-Exécute le scénario dans un vrai Chromium : clic, saisie, sélection, vérifications. Capture un
+Exécute le scénario dans un vrai navigateur (Chromium par défaut, ou Firefox / WebKit choisi sur
+l'écran "New Run" ; le moteur choisi sert pour tout le run : crawl, exécution, analyse RTL, et
+un rejeu reprend celui du run d'origine) : clic, saisie, sélection, vérifications. Capture un
 screenshot après CHAQUE étape (succès ou échec) et s'arrête dès la première étape en échec.
 `assert_enabled` vérifie qu'un élément n'est plus désactivé (`disabled`, `aria-disabled`, ou
 curseur `not-allowed`).
+
+Le diff visuel ne compare que des runs du même moteur (le rendu diffère d'un moteur à l'autre) ;
+les anciens runs, sans moteur enregistré, comptent comme Chromium.
 
 Timeouts configurables (`stepTimeoutMs` par défaut 10s, `navigationTimeoutMs` par défaut 30s),
 utile sur un environnement de staging plus lent — réglable via l'écran "New Test" du frontend ou
@@ -144,10 +154,47 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 25 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — 68 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
-de confiance, retry Groq, relecture IA double-passe) et `visual-diff.js` (comparaison
-identique/régression/dimensions différentes/scénarios non comparables).
+de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
+(comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
+(étapes à sélecteur halluciné), `url-guard.js` (SSRF), le stockage des runs et des notes, la
+détection du bouton de langue, et l'API HTTP complète (auth, 400/401/404/429, CORS, en-têtes).
+
+## Sélecteurs d'éléments
+
+Pour chaque élément interactif, le crawler choisit le sélecteur le plus stable, dans cet ordre :
+`data-testid` > `id` > `name` > **rôle + nom visible** (`role=button[name="Continuer"]`) >
+texte visible d'une carte cliquable (`text="Je suis un Donateur"`) > chemin CSS (dernier recours).
+
+Un sélecteur n'est retenu que s'il désigne **exactement** l'élément dans la page (vérifié avec
+Playwright). Quand un sélecteur lisible remplace un chemin CSS fragile ou un `id` généré
+(`mat-input-0`, `:r0:`), l'ancien est conservé comme **sélecteur de secours** : si le lisible ne
+trouve plus rien (par ex. le site vient de passer en arabe, donc le texte des boutons a changé),
+le runner essaie automatiquement le secours.
+
+## Configuration (`backend/.env`)
+
+Copie `.env.example` en `.env`. Variables obligatoires : `GROQ_API_KEY`, `AUTH_PASSWORD`, `JWT_SECRET`
+(32 caractères aléatoires minimum — le serveur affiche un avertissement au démarrage sinon).
+
+Variables optionnelles :
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `ALLOWED_TARGET_HOSTS` | Liste (virgules, jokers `*.`) des seuls sites que le serveur peut tester | tous les sites publics |
+| `ALLOW_PRIVATE_TARGETS` | `true` pour tester une appli sur `localhost`/réseau privé (dev uniquement) | refusé |
+| `CORS_ORIGIN` | Origines autorisées à appeler l'API depuis un navigateur | `http://localhost:5173` |
+| `TRUST_PROXY` | Nombre de reverse proxys devant l'API (pour que l'anti-bruteforce voie la vraie IP) | désactivé |
+| `NETWORK_SETTLE_TIMEOUT_MS` | Attente max (ms) du « réseau calme » après chargement (les sites à carrousel/analytics ne se calment jamais : on continue ensuite) | `5000` |
+| `JWT_LIFETIME` | Durée d'une session (`12h`, `7d`...) | `7d` |
+| `MAX_CONCURRENT_RUNS` | Nombre de runs (donc de Chromium) simultanés | `2` |
+| `VISUAL_DIFF_THRESHOLD_PERCENT` | % de pixels différents au-delà duquel une étape est une régression | `0.5` |
+| `AR_TOGGLE_KEYWORDS` | Libellés supplémentaires du bouton « passer en arabe » | arabe, arabic, AR, العربية, عربي |
+| `I18N_IGNORE_TEXTS` | Textes identiques FR/AR à ne pas signaler (marques...) | e-mails et URLs seulement |
+
+> Le serveur peut être lancé depuis n'importe quel dossier : `runs/`, `run-screenshots/`, etc.
+> sont toujours créés sous `backend/`.
 
 ## Le frontend
 

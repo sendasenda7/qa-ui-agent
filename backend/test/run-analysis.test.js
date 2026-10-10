@@ -4,7 +4,7 @@ import { PNG } from "pngjs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { startRun, startReplay } from "../src/run-executor.js";
+import { startRun, startReplay, reserveRunSlot, getActiveRunCount } from "../src/run-executor.js";
 import { readRun, saveRun } from "../src/run-store.js";
 import { findBaselineRun, needsAnalysis } from "../src/run-analysis.js";
 
@@ -74,7 +74,7 @@ test("aucune option : pas de phase d'analyse, pas de résultats rtl/visualDiff",
   const { runId, done } = await startRun(baseInput, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
   await done;
   const { runResult, options } = await readRun(runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.phase, "done");
   assert.equal(runResult.rtl, undefined);
   assert.equal(runResult.visualDiff, undefined);
@@ -190,7 +190,7 @@ test("rejeu : diff visuel toujours activé, comparé au run d'origine, RTL héri
   await replay.done;
 
   const saved = await readRun(replay.runId);
-  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true });
+  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(saved.runResult.replayOf, String(original.runId));
   assert.equal(saved.runResult.visualDiff.status, "done");
   assert.equal(saved.runResult.visualDiff.baselineRunId, original.runId);
@@ -208,6 +208,104 @@ test("rejeu d'un ancien run sans options ni capture : no_baseline, pas de planta
   const replay = await startReplay(String(oldRunId), { run: makeRunStub([1, 1, 1]) });
   await replay.done;
   const { options, runResult } = await readRun(replay.runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.visualDiff.status, "no_baseline");
+});
+
+test("moteur de navigateur : transmis au crawl, au runner et à l'analyse RTL, et enregistré dans le run", async () => {
+  const received = {};
+  const crawl = async (url, opts) => { received.crawl = opts.browserEngine; return crawlStub(); };
+  const baseRun = makeRunStub([0, 0, 0]);
+  const run = async (url, scenario, opts) => { received.run = opts.browserEngine; return baseRun(url, scenario, opts); };
+  const localize = async (url, opts) => { received.localize = opts.browserEngine; return okReport; };
+
+  const { runId, done } = await startRun(
+    { url: "https://firefox.test/", ticketText: "Ticket firefox", checkRtl: true, browserEngine: "firefox" },
+    { crawl, plan: planStub, run, localize }
+  );
+  await done;
+
+  assert.deepEqual(received, { crawl: "firefox", run: "firefox", localize: "firefox" });
+  const saved = await readRun(runId);
+  assert.equal(saved.options.browserEngine, "firefox");
+  assert.equal(saved.runResult.browserEngine, "firefox");
+});
+
+test("moteur de navigateur inconnu : startRun refuse avant de créer le run", async () => {
+  await assert.rejects(
+    startRun({ ...baseInput, browserEngine: "netscape" }, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) }),
+    /Moteur de navigateur inconnu/
+  );
+});
+
+test("la référence du diff visuel ignore les runs d'un autre moteur", async () => {
+  const url = "https://moteurs.test/";
+  const ticketText = "Ticket moteurs";
+  const chromiumRun = await startRun({ url, ticketText, browserEngine: "chromium" }, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
+  await chromiumRun.done;
+
+  // Firefox ne doit pas se comparer au run Chromium : pas de référence, donc 'no_baseline'.
+  const firefoxRun = await startRun({ url, ticketText, checkVisualDiff: true, browserEngine: "firefox" }, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
+  await firefoxRun.done;
+  const firefoxSaved = await readRun(firefoxRun.runId);
+  assert.equal(firefoxSaved.runResult.visualDiff.status, "no_baseline");
+
+  // Un second run Firefox, lui, se compare au premier run Firefox (et pas au Chromium).
+  const firefoxAgain = await startRun({ url, ticketText, checkVisualDiff: true, browserEngine: "firefox" }, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
+  await firefoxAgain.done;
+  const again = await readRun(firefoxAgain.runId);
+  assert.equal(again.runResult.visualDiff.status, "done");
+  assert.equal(again.runResult.visualDiff.baselineRunId, firefoxRun.runId);
+});
+
+test("un ancien run sans moteur enregistré est traité comme Chromium (référence et rejeu)", async () => {
+  const url = "https://ancien.test/";
+  const ticketText = "Ticket ancien";
+  const legacy = await startRun({ url, ticketText }, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
+  await legacy.done;
+  // On simule un run écrit avant l'existence du sélecteur : plus de moteur nulle part.
+  const legacySaved = await readRun(legacy.runId);
+  delete legacySaved.options.browserEngine;
+  delete legacySaved.runResult.browserEngine;
+  await saveRun(legacy.runId, legacySaved);
+
+  const state = { ticketText, options: { browserEngine: "chromium" }, runResult: { runId: legacy.runId + 10_000, url } };
+  const baseline = await findBaselineRun(state);
+  assert.equal(baseline?.runResult.runId, legacy.runId);
+
+  let replayEngine;
+  const run = async (u, scenario, opts) => { replayEngine = opts.browserEngine; return makeRunStub([0, 0, 0])(u, scenario, opts); };
+  const replay = await startReplay(String(legacy.runId), { run });
+  await replay.done;
+  assert.equal(replayEngine, "chromium");
+  assert.equal((await readRun(replay.runId)).runResult.browserEngine, "chromium");
+});
+
+test("rejeu : hérite du moteur du run d'origine", async () => {
+  const original = await startRun({ url: "https://rejeu-webkit.test/", ticketText: "Ticket webkit", browserEngine: "webkit" }, { crawl: crawlStub, plan: planStub, run: makeRunStub([5, 5, 5]) });
+  await original.done;
+
+  let replayEngine;
+  const run = async (u, scenario, opts) => { replayEngine = opts.browserEngine; return makeRunStub([5, 5, 5])(u, scenario, opts); };
+  const replay = await startReplay(String(original.runId), { run });
+  await replay.done;
+
+  assert.equal(replayEngine, "webkit");
+  const saved = await readRun(replay.runId);
+  assert.equal(saved.options.browserEngine, "webkit");
+  assert.equal(saved.runResult.browserEngine, "webkit");
+  assert.equal(saved.runResult.visualDiff.status, "done");
+});
+
+test("un run démarré remplace sa réservation : la place n'est jamais comptée deux fois", async () => {
+  const reservation = reserveRunSlot(2);
+  assert.equal(getActiveRunCount(), 1);
+  const { done } = await startRun(
+    { url: "https://exemple.test", ticketText: "t" },
+    { crawl: crawlStub, plan: planStub, run: makeRunStub([1, 2, 3]) },
+    reservation
+  );
+  assert.equal(getActiveRunCount() <= 1, true, "réservation + run actif ne doivent compter que pour 1");
+  await done;
+  assert.equal(getActiveRunCount(), 0);
 });

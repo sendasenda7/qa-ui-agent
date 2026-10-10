@@ -1,3 +1,4 @@
+import "./bootstrap.js";
 import { readFile } from "fs/promises";
 import { compareRuns } from "./visual-diff.js";
 

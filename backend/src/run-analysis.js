@@ -1,6 +1,8 @@
 import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { listRuns, readRun } from "./run-store.js";
+import { resolveBrowserEngine } from "./browser.js";
+import { stripAnsi } from "./page-utils.js";
 
 /**
  * Analyses optionnelles exécutées APRÈS le scénario d'un run, selon les interrupteurs
@@ -26,6 +28,11 @@ export function needsAnalysis(options) {
   return Boolean(options?.checkRtl || options?.checkVisualDiff);
 }
 
+/** Compare deux tickets sans tenir compte des espaces, retours à la ligne et de la casse. */
+function normalizeTicket(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 /** Un run n'est utilisable comme référence que s'il a au moins une capture. */
 function hasScreenshots(run) {
   return Boolean(run?.runResult?.results?.some((step) => step?.screenshot));
@@ -35,14 +42,16 @@ function hasScreenshots(run) {
  * Trouve le run de référence pour le diff visuel :
  *  1. un rejeu (replayOf) se compare TOUJOURS au run d'origine : c'est le même scénario,
  *     donc la comparaison est fiable ;
- *  2. sinon, le run terminé le plus récent, plus ancien que celui-ci, sur la même URL et
- *     avec le même texte de ticket. Le scénario a pu être régénéré différemment par l'IA :
+ *  2. sinon, le run terminé le plus récent, plus ancien que celui-ci, sur la même URL,
+ *     avec le même texte de ticket et le même moteur de navigateur (Chromium, Firefox et
+ *     WebKit ne rendent pas les pages au pixel près : les comparer n'aurait pas de sens). Le scénario a pu être régénéré différemment par l'IA :
  *     compareRuns le signale alors dans ses avertissements.
  * Renvoie null s'il n'y a aucune référence exploitable.
  */
 export async function findBaselineRun(state, deps = {}) {
   const { list = listRuns, read = readRun } = deps;
   const { runResult, ticketText } = state;
+  const engine = resolveBrowserEngine(state.options?.browserEngine);
 
   if (runResult.replayOf) {
     const source = await read(runResult.replayOf);
@@ -60,7 +69,14 @@ export async function findBaselineRun(state, deps = {}) {
 
   for (const candidate of candidates) {
     const run = await read(candidate.runId);
-    if (run && run.ticketText === ticketText && hasScreenshots(run)) return run;
+    if (
+      run &&
+      normalizeTicket(run.ticketText) === normalizeTicket(ticketText) &&
+      resolveBrowserEngine(run.options?.browserEngine) === engine &&
+      hasScreenshots(run)
+    ) {
+      return run;
+    }
   }
   return null;
 }
@@ -71,15 +87,21 @@ export async function findBaselineRun(state, deps = {}) {
  * Ne lève jamais d'exception.
  */
 export async function runAnalysis(state, persist, deps = {}) {
-  const { localize = checkLocalization, compare = compareRuns } = deps;
+  const { localize = checkLocalization, compare = compareRuns, navigationTimeoutMs } = deps;
   const { options, runResult } = state;
 
   if (options?.checkRtl) {
     try {
-      runResult.rtl = { status: "done", report: await localize(runResult.url) };
+      runResult.rtl = {
+        status: "done",
+        report: await localize(runResult.url, {
+          navigationTimeoutMs,
+          browserEngine: options.browserEngine,
+        }),
+      };
     } catch (err) {
       console.error(`[run ${runResult.runId}] analyse RTL impossible :`, err.message);
-      runResult.rtl = { status: "error", error: err.message };
+      runResult.rtl = { status: "error", error: stripAnsi(err.message) };
     }
     await persist();
   }
@@ -92,7 +114,7 @@ export async function runAnalysis(state, persist, deps = {}) {
           status: "no_baseline",
           reason: runResult.replayOf
             ? "Le run d'origine n'a pas de capture d'écran à comparer."
-            : "Aucun run précédent avec la même URL et le même ticket : ce run servira de référence pour les prochains.",
+            : "Aucun run précédent avec la même URL, le même ticket et le même navigateur : ce run servira de référence pour les prochains.",
         };
       } else {
         const report = await compare(baseline, state);
@@ -104,7 +126,7 @@ export async function runAnalysis(state, persist, deps = {}) {
       }
     } catch (err) {
       console.error(`[run ${runResult.runId}] diff visuel impossible :`, err.message);
-      runResult.visualDiff = { status: "error", error: err.message };
+      runResult.visualDiff = { status: "error", error: stripAnsi(err.message) };
     }
     await persist();
   }

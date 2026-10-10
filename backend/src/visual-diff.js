@@ -4,7 +4,15 @@ import { readFile, mkdir, writeFile } from "fs/promises";
 
 // Au-delà de ce pourcentage de pixels différents, on considère que c'est une
 // vraie régression visuelle et pas juste du bruit de rendu (antialiasing, etc.).
-const REGRESSION_THRESHOLD_PERCENT = 0.5;
+// Réglable sans toucher au code : VISUAL_DIFF_THRESHOLD_PERCENT dans backend/.env.
+const DEFAULT_REGRESSION_THRESHOLD_PERCENT = 0.5;
+
+function getRegressionThreshold(env = process.env) {
+  const configured = Number(env.VISUAL_DIFF_THRESHOLD_PERCENT);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_REGRESSION_THRESHOLD_PERCENT;
+}
 
 async function loadPng(path) {
   const buffer = await readFile(path);
@@ -48,7 +56,7 @@ export async function compareScreenshots(pathA, pathB, diffOutputPath) {
     totalPixels,
     diffPercent: Number(diffPercent.toFixed(3)),
     diffImagePath: diffOutputPath,
-    isRegression: diffPercent > REGRESSION_THRESHOLD_PERCENT,
+    isRegression: diffPercent > getRegressionThreshold(),
   };
 }
 
