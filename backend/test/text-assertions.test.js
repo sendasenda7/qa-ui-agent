@@ -65,3 +65,32 @@ test("runner : un sélecteur dynamique cible le premier élément (pas d'erreur 
   const locator = await resolveLocator(page, { selector: "role=alert", selectorKind: "dynamic" }, 5000);
   assert.equal(locator.isFirst, true);
 });
+
+test("planner : un sélecteur recopié avec des guillemets échappés (\\\") est décodé s'il correspond au crawl", () => {
+  const crawlWithCard = { elements: [{ selector: 'text="Je suis un Donateur"' }], textElements: [] };
+  const { steps, warnings } = validateScenario(
+    {
+      steps: [
+        { type: "click", selector: 'text=\\"Je suis un Donateur\\"', description: "clic" },
+        { type: "assert_visible", selector: 'text=\\"Espace donateur bientôt disponible\\"', description: "message après clic" },
+        { type: "click", selector: 'text=\\"Inventé\\"', description: "inventé" },
+      ],
+    },
+    crawlWithCard
+  );
+  assert.equal(steps[0].selector, 'text="Je suis un Donateur"');
+  assert.equal(steps[0].selectorValid, true);
+  assert.equal(steps[1].selector, 'text="Espace donateur bientôt disponible"');
+  assert.equal(steps[1].selectorKind, "dynamic");
+  assert.equal(steps[2].selectorValid, false, "click sur un texte absent du crawl reste refusé");
+  assert.equal(warnings.length, 1);
+});
+
+test("planner : un texte dynamique contenant légitimement des guillemets échappés n'est pas modifié", () => {
+  const { steps } = validateScenario(
+    { steps: [{ type: "assert_visible", selector: 'text="Dire \\"non\\""', description: "citation" }] },
+    { elements: [], textElements: [] }
+  );
+  assert.equal(steps[0].selector, 'text="Dire \\"non\\""');
+  assert.equal(steps[0].selectorValid, true);
+});
