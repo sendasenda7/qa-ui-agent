@@ -98,3 +98,15 @@ test("résultat d'étape : l'adresse attendue est enregistrée, jamais la valeur
   assert.equal("expected" in fill, false);
   assert.equal(JSON.stringify(fill).includes("MotDePasse"), false);
 });
+
+test("waitForRendered : ne plante jamais, même si la page échoue ou n'affiche rien", async () => {
+  const { waitForRendered } = await import("../src/page-utils.js");
+  const failing = {
+    waitForFunction: async () => { throw new Error("Timeout"); },
+    evaluate: async () => { throw new Error("page fermée"); },
+  };
+  await waitForRendered(failing, 50);
+  let called = false;
+  await waitForRendered({ waitForFunction: async () => { called = true; }, evaluate: async () => {} }, 0);
+  assert.equal(called, false, "RENDER_TIMEOUT_MS=0 désactive l'attente");
+});

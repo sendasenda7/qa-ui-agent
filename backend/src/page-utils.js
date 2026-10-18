@@ -23,6 +23,69 @@ function getSettleTimeoutMs(env = process.env) {
 export async function settlePage(page, settleTimeoutMs = getSettleTimeoutMs()) {
   await page.waitForLoadState("load", { timeout: settleTimeoutMs }).catch(() => {});
   await page.waitForLoadState("networkidle", { timeout: settleTimeoutMs }).catch(() => {});
+  await waitForRendered(page);
+}
+
+// Temps maximum (ms) qu'on laisse à une appli JavaScript (Angular, React...) pour AFFICHER son
+// contenu. Réglable via RENDER_TIMEOUT_MS dans backend/.env.
+const DEFAULT_RENDER_TIMEOUT_MS = 10000;
+// La page doit rester inchangée pendant ce délai (ms) pour être considérée comme affichée.
+const DOM_QUIET_MS = 400;
+
+function getRenderTimeoutMs(env = process.env) {
+  const configured = Number(env.RENDER_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_RENDER_TIMEOUT_MS;
+}
+
+/**
+ * Attend, SANS jamais échouer, qu'une appli monopage ait affiché quelque chose : un champ, un
+ * bouton, un lien, ou du texte. Sans cela, les évènements "load"/"networkidle" arrivent alors que
+ * l'appli (Angular...) n'a rien dessiné : le crawler ne voyait aucun élément et les captures
+ * étaient blanches. Ensuite on laisse la page se calmer (plus de changement du DOM pendant
+ * DOM_QUIET_MS), car l'affichage se fait souvent en plusieurs temps (formulaire, puis traductions).
+ */
+export async function waitForRendered(page, timeoutMs = getRenderTimeoutMs()) {
+  if (timeoutMs <= 0) return;
+  const deadline = Date.now() + timeoutMs;
+  // try/catch (et non .catch) : "sans jamais échouer", même si la page est fermée en route.
+  try {
+    await page.waitForFunction(
+      () => {
+        const body = document.body;
+        if (!body) return false;
+        if (body.querySelector("input, button, select, textarea, a[href], [role=button]")) return true;
+        return (body.innerText || "").trim().length > 20;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    );
+  } catch {
+    // rien d'affiché dans le délai : on continue avec ce qu'il y a
+  }
+  try {
+    const remaining = Math.max(0, deadline - Date.now());
+    await page.evaluate(
+      ({ quietMs, maxMs }) =>
+        new Promise((resolve) => {
+          let timer = setTimeout(done, quietMs);
+          const observer = new MutationObserver(() => {
+            clearTimeout(timer);
+            timer = setTimeout(done, quietMs);
+          });
+          const hard = setTimeout(done, maxMs);
+          function done() {
+            observer.disconnect();
+            clearTimeout(timer);
+            clearTimeout(hard);
+            resolve();
+          }
+          observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+        }),
+      { quietMs: DOM_QUIET_MS, maxMs: Math.min(remaining, 3000) }
+    );
+  } catch {
+    // page fermée ou navigation en cours : sans importance
+  }
 }
 
 /**

@@ -208,6 +208,7 @@ Variables optionnelles :
 | `CORS_ORIGIN` | Origines autorisées à appeler l'API depuis un navigateur | `http://localhost:5173` |
 | `TRUST_PROXY` | Nombre de reverse proxys devant l'API (pour que l'anti-bruteforce voie la vraie IP) | désactivé |
 | `NETWORK_SETTLE_TIMEOUT_MS` | Attente max (ms) du « réseau calme » après chargement (les sites à carrousel/analytics ne se calment jamais : on continue ensuite) | `5000` |
+| `RENDER_TIMEOUT_MS` | Attente max (ms) qu'une appli monopage (Angular, React...) affiche son contenu avant de le lire/capturer (`0` = ne pas attendre) | `10000` |
 | `JWT_LIFETIME` | Durée d'une session (`12h`, `7d`...) | `7d` |
 | `MAX_CONCURRENT_RUNS` | Nombre de runs (donc de Chromium) simultanés | `2` |
 | `VISUAL_DIFF_THRESHOLD_PERCENT` | % de pixels différents au-delà duquel une étape est une régression | `0.5` |
