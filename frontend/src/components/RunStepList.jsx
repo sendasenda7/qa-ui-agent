@@ -39,9 +39,9 @@ export default function RunStepList({ steps, results, currentIndex }) {
 
               <div className="flex flex-col min-w-0 flex-1 gap-1">
                 <span className="text-sm">{step.description}</span>
-                {step.selector && (
+                {(step.selector ?? (step.type === "assert_url" ? step.value : null)) && (
                   <code className="text-[11px] font-mono text-text-faint truncate">
-                    {step.type}('{step.selector}')
+                    {step.type}('{step.selector ?? step.value}')
                   </code>
                 )}
                 {result?.error && <span className="text-[11px] text-danger">{result.error}</span>}

@@ -255,9 +255,9 @@ export default function ReportDetail() {
                 <StatusBadge status={step.status} />
               </div>
               <span className="text-sm">{step.description}</span>
-              {step.selector && (
+              {(step.selector ?? step.expected) && (
                 <code className="text-[11px] font-mono text-text-faint truncate">
-                  {step.type}('{step.selector}')
+                  {step.type}('{step.selector ?? step.expected}')
                 </code>
               )}
               {step.error && (

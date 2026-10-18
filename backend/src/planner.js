@@ -1,3 +1,6 @@
+import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
+import { isMeaningfulUrlFragment } from "./page-utils.js";
+
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
@@ -59,6 +62,7 @@ const STEP_TYPES = [
   "assert_visible",
   "assert_enabled",
   "assert_text",
+  "assert_url",
   "go_back",
 ];
 
@@ -91,6 +95,12 @@ sous l'une de ces deux formes exactes :
 N'utilise JAMAIS ces formes pour click, fill ou select : ces actions n'acceptent que les sélecteurs
 de la liste. Pour assert_text, "value" doit contenir le texte attendu (jamais vide).
 
+Étape "assert_url" : vérifie que l'ADRESSE (URL) de la page contient le texte donné dans "value"
+(ex. "/association"), avec "selector": null. Place-la APRÈS l'action qui provoque la navigation, quand
+le ticket parle d'une redirection, d'une arrivée sur une autre page ou d'une adresse. N'invente JAMAIS
+l'adresse : n'utilise que celle que le ticket donne explicitement. Si le ticket demande de vérifier
+qu'on a changé de page sans en donner l'adresse, n'ajoute pas "assert_url" et signale-le dans "warnings".
+
 IMPORTANT sur la copie des sélecteurs : la liste fournie est du JSON, donc un guillemet y apparaît
 sous la forme \\" . Recopie le sélecteur DÉCODÉ, avec de simples guillemets : si tu lis
 "text=\\"Je suis un Donateur\\"" dans la liste, le sélecteur est text="Je suis un Donateur".
@@ -113,9 +123,9 @@ contente-toi de ce que le ticket demande explicitement.
   "warnings": ["éventuel avertissement si le ticket demande quelque chose d'introuvable"],
   "steps": [
     {
-      "type": "navigate|click|fill|select|assert_visible|assert_text|go_back",
-      "selector": "le sélecteur EXACT copié depuis la liste fournie (ou null pour navigate/go_back)",
-      "value": "valeur à saisir/sélectionner, uniquement pour fill/select/assert_text, sinon null",
+      "type": "navigate|click|fill|select|assert_visible|assert_text|assert_url|go_back",
+      "selector": "le sélecteur EXACT copié depuis la liste fournie (ou null pour navigate/go_back/assert_url)",
+      "value": "valeur à saisir/sélectionner, ou texte/adresse attendu, uniquement pour fill/select/assert_text/assert_url, sinon null",
       "description": "description courte et humaine de l'étape, en français"
     }
   ]
@@ -405,7 +415,7 @@ export function validateScenario(scenario, crawlResult) {
 
   const checkedSteps = wellFormedSteps.map((originalStep) => {
     let step = originalStep;
-    const needsSelector = !["navigate", "go_back"].includes(step.type);
+    const needsSelector = !STEPS_WITHOUT_SELECTOR.includes(step.type);
 
     // Guillemets protégés à tort (voir unescapeQuotedSelector) : on ne décode que si le sélecteur
     // tel quel n'est ni connu ni une forme dynamique valide, et seulement si la version décodée l'est.
@@ -448,6 +458,17 @@ export function validateScenario(scenario, crawlResult) {
   // Garde-fou anti-faux-positif : un "assert_text" sans texte attendu passerait TOUJOURS
   // ("abc".includes("") vaut true) et afficherait un faux "réussi". On le retire.
   const withSelectorCheck = checkedSteps.filter((step) => {
+    // Même raisonnement pour "assert_url" : une adresse vide, "/" ou "http" est vraie sur toute page.
+    if (step.type === "assert_url") {
+      const hasMeaningfulUrl = isMeaningfulUrlFragment(step.value);
+      if (!hasMeaningfulUrl) {
+        validationWarnings.push(
+          `Étape retirée : "assert_url" sans adresse exploitable (valeur : ${JSON.stringify(step.value ?? null)}, étape "${step.description}") — elle aurait toujours réussi.`
+        );
+      }
+      return hasMeaningfulUrl;
+    }
+
     if (step.type !== "assert_text") return true;
     const hasExpectedText = typeof step.value === "string" && step.value.trim() !== "";
     if (!hasExpectedText) {
