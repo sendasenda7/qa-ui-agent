@@ -1,6 +1,7 @@
 /**
  * Utilitaires de navigation partagés par le crawler, le runner et la vérification FR/AR.
  */
+import { StepError } from "./step-errors.js";
 
 // Temps maximum (ms) qu'on accepte d'attendre que le réseau se calme APRÈS le chargement de la
 // page. Réglable via NETWORK_SETTLE_TIMEOUT_MS dans backend/.env.
@@ -155,8 +156,11 @@ export async function waitForUrlContaining(page, expected, timeout) {
   try {
     await page.waitForURL((url) => url.href.includes(wanted), { timeout, waitUntil: "commit" });
   } catch {
-    throw new Error(
-      `Adresse attendue (contient) : "${wanted}" — adresse actuelle : "${redactUrl(page.url())}"`
-    );
+    const current = redactUrl(page.url());
+    throw new StepError("URL_MISMATCH", `Adresse attendue (contient) : "${wanted}" — adresse actuelle : "${current}"`, {
+      expected: `L'adresse contient « ${wanted} »`,
+      found: `Adresse actuelle : ${current}`,
+      hint: "La navigation attendue n'a pas eu lieu : une action manque peut-être avant (clic, envoi du formulaire), ou le formulaire a affiché une erreur (voir la capture).",
+    });
   }
 }

@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── step-errors.js       # Erreurs d'étape structurées : catégorie, code stable, attendu/trouvé/piste
 │   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay) + limite de runs
 │   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel)
 │   │   ├── auth.js              # Mot de passe d'équipe, JWT, anti-bruteforce
@@ -154,7 +155,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 68 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — 135 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -193,6 +194,36 @@ d'une appli monopage arrive quelques instants après le clic. Le ticket doit don
 (l'IA n'en invente jamais). Une adresse vide, `/` ou `http` serait vraie sur n'importe quelle page :
 ces étapes sont retirées avec un avertissement. En cas d'échec, le rapport affiche l'adresse réellement
 atteinte, avec la valeur des paramètres sensibles (`token`, `code`, `session`...) masquée.
+
+## Erreurs d'étape lisibles
+
+Une étape en échec n'affiche plus le message brut de Playwright. Chaque échec est classé
+(`step-errors.js`) et enregistré dans `result.failure` avec :
+
+- un **code stable** (`E-URL-001`...), pour retrouver et regrouper les échecs ;
+- une **phrase lisible** (aussi dans `result.error`) ;
+- **Attendu / Trouvé** : par exemple le texte attendu et les textes réellement visibles sur la page
+  (lus au moment de l'échec, jamais la valeur d'un champ de saisie) ;
+- une **piste d'action** (« une action manque peut-être avant cette vérification — boutons visibles :
+  « Continuer » ») ;
+- le **message technique d'origine**, replié dans « Détails techniques » (interface web).
+
+| Code | Catégorie | Cas typique |
+|---|---|---|
+| `E-SEL-001` | `SELECTOR_HALLUCINATED` | sélecteur inventé par l'IA, absent du crawl |
+| `E-STP-001` | `INVALID_STEP` | étape sans sélecteur, type inconnu, assertion vide |
+| `E-ELM-001` | `ELEMENT_NOT_FOUND` | aucun élément ne correspond au sélecteur |
+| `E-ELM-002` | `ELEMENT_NOT_VISIBLE` | élément présent mais caché |
+| `E-ELM-003` | `ELEMENT_DISABLED` | élément désactivé |
+| `E-ELM-004` | `ELEMENT_OBSCURED` | un bandeau ou une fenêtre recouvre la cible |
+| `E-ELM-005` | `ELEMENT_AMBIGUOUS` | le sélecteur désigne plusieurs éléments |
+| `E-TXT-001` | `TEXT_MISMATCH` | le texte affiché diffère du texte attendu |
+| `E-URL-001` | `URL_MISMATCH` | l'adresse atteinte ne contient pas l'adresse attendue |
+| `E-NAV-001` | `NAVIGATION_ERROR` | DNS, connexion refusée, certificat |
+| `E-TMO-001` | `TIMEOUT` | chargement ou action trop lents |
+| `E-UNK-001` | `UNKNOWN` | non reconnue (le détail technique est conservé) |
+
+Les anciens runs, enregistrés avant ce format, n'ont que `error` et s'affichent comme avant.
 
 ## Configuration (`backend/.env`)
 
@@ -246,6 +277,7 @@ npm run dev
 
 ## Prochaines pistes
 
+- Capture prise au moment de l'échec avec l'élément concerné encadré
 - Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Support multi-page dans un scénario (naviguer vers une 2ᵉ URL en cours de route)
 - Historique du score de confiance dans le temps, par ticket

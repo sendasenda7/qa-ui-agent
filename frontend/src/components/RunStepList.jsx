@@ -1,5 +1,6 @@
 import { CheckCircle2, XCircle, Loader2, Circle } from "lucide-react";
 import { screenshotUrl } from "../lib/api.js";
+import StepFailure from "./StepFailure.jsx";
 
 /** "passed" | "failed" si l'étape est terminée, "running" si c'est l'étape en cours, sinon "pending". */
 function getStepState(index, results, currentIndex) {
@@ -44,7 +45,7 @@ export default function RunStepList({ steps, results, currentIndex }) {
                     {step.type}('{step.selector ?? step.value}')
                   </code>
                 )}
-                {result?.error && <span className="text-[11px] text-danger">{result.error}</span>}
+                <StepFailure result={result} />
                 {result && <span className="text-[11px] text-text-faint">{result.durationMs}ms</span>}
               </div>
 

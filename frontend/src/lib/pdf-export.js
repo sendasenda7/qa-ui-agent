@@ -116,12 +116,33 @@ export async function exportRunReportToPdf({ scenario, runResult, ticketUrl }) {
     ensureSpace(lines.length * 5 + (step.error ? 5 : 0));
     doc.text(lines, MARGIN, y);
     y += lines.length * 5;
+
     if (step.error) {
-      const errorLines = doc.splitTextToSize(`   ↳ ${step.error}`, CONTENT_WIDTH);
+      // Échec structuré : code, phrase lisible, attendu / trouvé / piste. Le détail technique
+      // (message Playwright brut) reste dans l'interface web, replié : il alourdirait le PDF.
+      const failure = step.failure;
+      const errorText = failure ? `   ↳ [${failure.code}] ${step.error}` : `   ↳ ${step.error}`;
+      const detailTexts = failure
+        ? [
+            failure.expected && `      Attendu : ${failure.expected}`,
+            failure.found && `      Trouvé : ${failure.found}`,
+            failure.hint && `      Piste : ${failure.hint}`,
+          ].filter(Boolean)
+        : [];
+
+      const errorLines = doc.splitTextToSize(errorText, CONTENT_WIDTH);
       doc.setTextColor(180, 40, 40);
+      ensureSpace(errorLines.length * 5);
       doc.text(errorLines, MARGIN, y);
-      doc.setTextColor(0, 0, 0);
       y += errorLines.length * 5;
+      doc.setTextColor(0, 0, 0);
+
+      for (const detail of detailTexts) {
+        const detailLines = doc.splitTextToSize(detail, CONTENT_WIDTH);
+        ensureSpace(detailLines.length * 5);
+        doc.text(detailLines, MARGIN, y);
+        y += detailLines.length * 5;
+      }
     }
   }
 
