@@ -19,10 +19,11 @@ function getPhases(options) {
  * Index de la phase en cours (== phases.length quand tout est terminé).
  * Les anciens runs n'ont pas de champ `phase` : ils sont forcément terminés.
  */
-function getActiveIndex({ phase, status, crawl, stepsTotal, stepsRun }, phases) {
+function getActiveIndex({ phase, status, crawl, failure, stepsTotal, stepsRun }, phases) {
   if (status === "error") {
     // Le pipeline a planté : on retrouve à quelle phase d'après ce qui a déjà été produit.
-    if (!crawl) return 0;
+    // Une page vide à l'exploration est un échec de l'exploration, même si le crawl a été enregistré.
+    if (!crawl || failure?.category === "CRAWL_EMPTY") return 0;
     if (!stepsTotal) return 1;
     const scenarioWasCompleted = stepsRun >= stepsTotal;
     return phases.length > 3 && scenarioWasCompleted ? 3 : RUNNING_INDEX;
@@ -41,6 +42,9 @@ function PhaseIcon({ state }) {
 /** Petit texte sous le titre de chaque phase, selon son état ("pending" | "active" | "done" | "failed"). */
 function describePhase(index, state, run, options) {
   const { crawl, stepsTotal, stepsRun } = run;
+  if (state === "failed" && index === 0 && run.failure?.category === "CRAWL_EMPTY") {
+    return "Aucun élément détecté sur la page";
+  }
   if (state === "failed" && index !== RUNNING_INDEX) return "Échec de cette phase";
 
   if (index === 0) {

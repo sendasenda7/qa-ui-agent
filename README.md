@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── step-errors.js       # Erreurs d'étape structurées : catégorie, code stable, attendu/trouvé/piste
 │   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay) + limite de runs
 │   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel)
 │   │   ├── auth.js              # Mot de passe d'équipe, JWT, anti-bruteforce
@@ -67,7 +68,10 @@ générer un scénario structuré : une liste d'étapes (`navigate`, `click`, `f
   avertissement clair, plutôt que de planter plus tard dans `runner.js`.
 - **Score de confiance** (`scenario.confidence`) : 100% moins 15 points par avertissement réel —
   directement dérivé de `scenario.warnings`, jamais une estimation inventée (`computeConfidence`,
-  partagée entre la validation mécanique et la relecture ci-dessous).
+  partagée entre la validation mécanique et la relecture ci-dessous). **Plafonné à 30 %** quand le
+  scénario ne contient aucune vérification (`assert_visible`, `assert_text`, `assert_url`,
+  `assert_enabled`) : il « réussit » alors dès que ses étapes s'exécutent, sans rien contrôler. Un
+  avertissement dédié l'indique, et le run s'affiche « terminé avec avertissements ».
 - **Retry automatique** (`callGroqWithRetry`, testé dans `test/planner-retry.test.js`) : jusqu'à 3
   tentatives avec backoff exponentiel sur 429/5xx/erreur réseau ; abandon immédiat sur 401/400.
 
@@ -154,7 +158,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 68 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — 162 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -176,8 +180,10 @@ le runner essaie automatiquement le secours.
 ## Vérifier un texte ou un message
 
 Le crawl renvoie aussi `textElements` : les textes **visibles et non cliquables** de la page (titres,
-alertes, bannières, messages d'erreur déjà affichés), chacun avec un sélecteur vérifié unique
-(`role=heading[name="Connexion"]`, `text="..."`). L'IA les utilise pour `assert_visible` / `assert_text`.
+alertes, bannières, messages d'erreur déjà affichés, puis le texte courant : paragraphes, éléments de
+liste, citations, légendes — 25 au plus, après les titres et messages, qui passent toujours en premier), chacun avec un sélecteur vérifié unique
+(`role=heading[name="Connexion"]`, `text="..."`, ou `p:has-text("...")` pour un paragraphe plus long que les
+120 caractères gardés). L'IA les utilise pour `assert_visible` / `assert_text`.
 
 Un message qui n'apparaît **qu'après une action** (erreur après un envoi, confirmation, toast) ne peut
 pas être dans le crawl. Pour lui, et seulement pour `assert_visible` / `assert_text`, le scénario peut
@@ -193,6 +199,45 @@ d'une appli monopage arrive quelques instants après le clic. Le ticket doit don
 (l'IA n'en invente jamais). Une adresse vide, `/` ou `http` serait vraie sur n'importe quelle page :
 ces étapes sont retirées avec un avertissement. En cas d'échec, le rapport affiche l'adresse réellement
 atteinte, avec la valeur des paramètres sensibles (`token`, `code`, `session`...) masquée.
+
+## Erreurs d'étape lisibles
+
+Une étape en échec n'affiche plus le message brut de Playwright. Chaque échec est classé
+(`step-errors.js`) et enregistré dans `result.failure` avec :
+
+- un **code stable** (`E-URL-001`...), pour retrouver et regrouper les échecs ;
+- une **phrase lisible** (aussi dans `result.error`) ;
+- **Attendu / Trouvé** : par exemple le texte attendu et les textes réellement visibles sur la page
+  (lus au moment de l'échec, jamais la valeur d'un champ de saisie) ;
+- une **piste d'action** (« une action manque peut-être avant cette vérification — boutons visibles :
+  « Continuer » ») ;
+- le **message technique d'origine**, replié dans « Détails techniques » (interface web).
+
+| Code | Catégorie | Cas typique |
+|---|---|---|
+| `E-SEL-001` | `SELECTOR_HALLUCINATED` | sélecteur inventé par l'IA, absent du crawl |
+| `E-STP-001` | `INVALID_STEP` | étape sans sélecteur, type inconnu, assertion vide |
+| `E-ELM-001` | `ELEMENT_NOT_FOUND` | aucun élément ne correspond au sélecteur |
+| `E-ELM-002` | `ELEMENT_NOT_VISIBLE` | élément présent mais caché |
+| `E-ELM-003` | `ELEMENT_DISABLED` | élément désactivé |
+| `E-ELM-004` | `ELEMENT_OBSCURED` | un bandeau ou une fenêtre recouvre la cible |
+| `E-ELM-005` | `ELEMENT_AMBIGUOUS` | le sélecteur désigne plusieurs éléments |
+| `E-TXT-001` | `TEXT_MISMATCH` | le texte affiché diffère du texte attendu |
+| `E-URL-001` | `URL_MISMATCH` | l'adresse atteinte ne contient pas l'adresse attendue |
+| `E-NAV-001` | `NAVIGATION_ERROR` | DNS, connexion refusée, certificat |
+| `E-TMO-001` | `TIMEOUT` | chargement ou action trop lents |
+| `E-CRW-001` | `CRAWL_EMPTY` | l'exploration n'a trouvé aucun élément ni texte sur la page |
+| `E-PLN-001` | `PLAN_EMPTY` | l'IA n'a généré aucune étape exécutable |
+| `E-UNK-001` | `UNKNOWN` | non reconnue (le détail technique est conservé) |
+
+Les anciens runs, enregistrés avant ce format, n'ont que `error` et s'affichent comme avant.
+
+**Erreurs qui interrompent tout le run** (`result.failure` au niveau du run, affichée sous la frise des
+phases) : un site injoignable pendant l'exploration (`E-NAV-001`), une **page vide** (`E-CRW-001`) ou une IA
+sans étape (`E-PLN-001`). Sur une page vide, le run s'arrête tout de suite : l'IA n'est pas appelée (elle
+n'aurait aucun élément à utiliser) et la phase « Exploration » apparaît en échec au lieu d'un faux vert.
+Une page qui n'a que du texte (sans champ ni bouton) reste testable avec `assert_text`. Les chemins du
+serveur et les clés d'API sont masqués dans tous les messages enregistrés.
 
 ## Configuration (`backend/.env`)
 
@@ -246,6 +291,7 @@ npm run dev
 
 ## Prochaines pistes
 
+- Capture prise au moment de l'échec avec l'élément concerné encadré
 - Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Support multi-page dans un scénario (naviguer vers une 2ᵉ URL en cours de route)
 - Historique du score de confiance dans le temps, par ticket

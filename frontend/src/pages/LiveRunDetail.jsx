@@ -6,6 +6,7 @@ import ProgressBar from "../components/ProgressBar.jsx";
 import PhaseTimeline from "../components/PhaseTimeline.jsx";
 import BrowserFrame from "../components/BrowserFrame.jsx";
 import RunStepList from "../components/RunStepList.jsx";
+import RunError from "../components/RunError.jsx";
 import { useRunPolling } from "../hooks/useRunPolling.js";
 import { useNow } from "../hooks/useNow.js";
 import { formatClock } from "../lib/format.js";
@@ -121,11 +122,7 @@ export default function LiveRunDetail() {
 
       <PhaseTimeline run={runResult} options={data.options} />
 
-      {runResult.error && (
-        <div className="bg-danger-muted border border-danger/30 text-danger text-sm rounded-xl p-3">
-          {runResult.error}
-        </div>
-      )}
+      <RunError runResult={runResult} />
 
       {showBrowser && (
         <BrowserFrame

@@ -321,38 +321,51 @@ export async function upgradeToSemanticSelectors(page, elements) {
 }
 
 /**
- * Textes visibles de la page qui ne sont PAS interactifs (titres, alertes, messages d'erreur,
- * toasts...) : ce sont eux qu'un ticket demande de vérifier ("le titre affiche...", "un message
- * d'erreur est visible"). S'exécute dans la page. Limité pour ne pas gonfler le prompt de l'IA.
+ * Textes visibles de la page qui ne sont PAS interactifs : ce sont eux qu'un ticket demande de
+ * vérifier ("le titre affiche...", "un message d'erreur est visible", "le texte ... est affiché").
+ * S'exécute dans la page. Deux passes, pour ne pas gonfler le prompt de l'IA :
+ *  1. les textes importants (titres, alertes, messages d'erreur, toasts), toujours gardés ;
+ *  2. le texte courant (paragraphes, éléments de liste, citations, légendes), pour compléter.
+ * Sans la 2e passe, un ticket qui cite une phrase d'un paragraphe n'avait rien à vérifier.
  */
-function collectTextInBrowser() {
+export function collectTextInBrowser() {
   const MAX_ITEMS = 40;
-  const SELECTOR = [
+  const MAX_BODY_ITEMS = 25;
+  const PRIORITY_SELECTOR = [
     "h1", "h2", "h3", "h4", "[role=heading]",
     "[role=alert]", "[role=status]", "[aria-live]:not([aria-live=off])",
     "mat-error", "[class*=error i]", "[class*=invalid-feedback i]", "[class*=alert i]",
     "[class*=toast i]", "[class*=snack i]", "[class*=notification i]", "[class*=message i]",
   ].join(",");
+  const BODY_SELECTOR = "p, li, blockquote, figcaption, caption";
 
   const seen = new Set();
   const out = [];
-  for (const el of document.querySelectorAll(SELECTOR)) {
-    const style = window.getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    if (style.display === "none" || style.visibility === "hidden" || rect.width === 0 || rect.height === 0) continue;
-    const text = (el.innerText || "").trim().split("\n")[0].trim().slice(0, 120);
-    if (text.length < 2 || seen.has(text)) continue;
-    seen.add(text);
 
-    const tag = el.tagName.toLowerCase();
-    const explicitRole = el.getAttribute("role");
-    const live = el.getAttribute("aria-live");
-    let kind = "texte";
-    if (/^h[1-6]$/.test(tag) || explicitRole === "heading") kind = "titre";
-    if (explicitRole === "alert" || explicitRole === "status" || live === "assertive" || live === "polite" || tag === "mat-error" || /error|invalid|alert|toast|snack|notification/i.test(el.className || "")) kind = "message";
-    out.push({ tag, kind, ariaRole: explicitRole || (kind === "titre" ? "heading" : null), text });
-    if (out.length >= MAX_ITEMS) break;
-  }
+  const collect = (selector, limit) => {
+    let added = 0;
+    for (const el of document.querySelectorAll(selector)) {
+      if (out.length >= MAX_ITEMS || added >= limit) break;
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      if (style.display === "none" || style.visibility === "hidden" || rect.width === 0 || rect.height === 0) continue;
+      const text = (el.innerText || "").trim().split("\n")[0].trim().slice(0, 120);
+      if (text.length < 2 || seen.has(text)) continue;
+      seen.add(text);
+
+      const tag = el.tagName.toLowerCase();
+      const explicitRole = el.getAttribute("role");
+      const live = el.getAttribute("aria-live");
+      let kind = "texte";
+      if (/^h[1-6]$/.test(tag) || explicitRole === "heading") kind = "titre";
+      if (explicitRole === "alert" || explicitRole === "status" || live === "assertive" || live === "polite" || tag === "mat-error" || /error|invalid|alert|toast|snack|notification/i.test(el.className || "")) kind = "message";
+      out.push({ tag, kind, ariaRole: explicitRole || (kind === "titre" ? "heading" : null), text });
+      added += 1;
+    }
+  };
+
+  collect(PRIORITY_SELECTOR, MAX_ITEMS);
+  collect(BODY_SELECTOR, MAX_BODY_ITEMS);
   return out;
 }
 
@@ -366,8 +379,19 @@ export function buildTextCandidates(item) {
     candidates.push(`role=${item.ariaRole}`);
   }
   candidates.push(`text=${quoteForSelector(item.text)}`);
+  // Texte entre guillemets = correspondance EXACTE avec tout le texte de l'élément. Or on ne garde
+  // que les 120 premiers caractères de la première ligne : pour un paragraphe plus long, le sélecteur
+  // exact ne trouve rien et le texte serait écarté. Ce dernier candidat cherche le début du texte
+  // (`:has-text` = sous-chaîne, sans tenir compte de la casse), limité à la même balise pour ne pas
+  // viser les conteneurs. Il n'est utilisé que si les précédents n'ont pas désigné un élément unique.
+  // Volontairement sans expression régulière : l'IA recopie ces sélecteurs dans du JSON, et les
+  // antislashs (\s, \.) y sont une source d'erreurs d'échappement.
+  if (/^[a-z][a-z0-9-]*$/.test(item.tag ?? "")) {
+    candidates.push(`${item.tag}:has-text(${quoteForSelector(item.text)})`);
+  }
   return candidates;
 }
+
 
 /** Pour chaque texte, garde le premier sélecteur qui désigne EXACTEMENT un élément de la page. */
 export async function resolveTextSelectors(page, items) {

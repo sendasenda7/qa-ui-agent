@@ -1,5 +1,6 @@
 import { launchBrowser, resolveBrowserEngine } from "./browser.js";
-import { gotoAndSettle, goBackAndSettle, stripAnsi, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
+import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
+import { StepError, classifyError, enrichFailure } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { mkdir } from "fs/promises";
 
@@ -57,8 +58,13 @@ export async function runScenario(url, scenario, options = {}) {
       try {
         await executeStep(page, url, step, { stepTimeoutMs, navigationTimeoutMs });
       } catch (err) {
+        // executeStep lève toujours une StepError (catégorie, attendu/trouvé/piste). On la complète
+        // avec ce qu'on voit sur la page, sans jamais laisser cette lecture faire échouer le run.
+        const failure = classifyError(err, step);
+        await enrichFailure(page, step, failure);
         stepResult.status = "failed";
-        stepResult.error = stripAnsi(err.message);
+        stepResult.error = failure.message;
+        stepResult.failure = failure.toFailure();
         overallStatus = "failed";
       }
       stepResult.durationMs = Date.now() - startedAt;
@@ -115,6 +121,7 @@ export function newStepResult(index, step) {
     ...(step.type === "assert_url" ? { expected: step.value ?? null } : {}),
     status: "passed",
     error: null,
+    failure: null,
     screenshot: null,
     durationMs: 0,
   };
@@ -155,15 +162,34 @@ export async function resolveLocator(page, step, stepTimeoutMs) {
  * peu parlant.
  */
 export async function executeStep(page, baseUrl, step, timeouts) {
+  try {
+    await performStep(page, baseUrl, step, timeouts);
+  } catch (err) {
+    // Toujours une StepError : les erreurs brutes de Playwright sont traduites ici.
+    throw classifyError(err, step);
+  }
+}
+
+async function performStep(page, baseUrl, step, timeouts) {
   const { stepTimeoutMs, navigationTimeoutMs } = timeouts;
 
   if (!STEPS_WITHOUT_SELECTOR.includes(step.type)) {
     if (!step.selector) {
-      throw new Error(`Étape "${step.type}" sans sélecteur : impossible de l'exécuter.`);
+      throw new StepError("INVALID_STEP", `Étape "${step.type}" sans sélecteur : impossible de l'exécuter.`, {
+        expected: "Un sélecteur d'élément",
+        found: "Aucun sélecteur dans l'étape",
+        hint: "Régénère le scénario : l'IA n'a pas indiqué quel élément cibler.",
+      });
     }
     if (step.selectorValid === false) {
-      throw new Error(
-        `Sélecteur absent de la page crawlée (probablement halluciné par l'IA) : ${step.selector} — étape non exécutée.`
+      throw new StepError(
+        "SELECTOR_HALLUCINATED",
+        `Sélecteur absent de la page crawlée (probablement halluciné par l'IA) : ${step.selector} — étape non exécutée.`,
+        {
+          expected: "Un élément présent dans le crawl de la page",
+          found: `Sélecteur inconnu : ${step.selector}`,
+          hint: "Relance l'exploration puis régénère le scénario, ou cite dans le ticket le libellé exact affiché à l'écran.",
+        }
       );
     }
   }
@@ -183,7 +209,11 @@ export async function executeStep(page, baseUrl, step, timeouts) {
     case "assert_url": {
       if (!isMeaningfulUrlFragment(step.value)) {
         // Défense en profondeur (planner.js retire déjà ces étapes) : "/" est vrai sur toute page.
-        throw new Error("assert_url sans adresse exploitable : l'assertion ne vérifierait rien.");
+        throw new StepError("INVALID_STEP", "assert_url sans adresse exploitable : l'assertion ne vérifierait rien.", {
+          expected: "Une adresse précise (ex. /association)",
+          found: "Adresse vide ou trop générale",
+          hint: "Indique dans le ticket l'adresse exacte attendue après l'action.",
+        });
       }
       await waitForUrlContaining(page, step.value, stepTimeoutMs);
       return;
@@ -216,7 +246,11 @@ export async function executeStep(page, baseUrl, step, timeouts) {
         );
       });
       if (isDisabled) {
-        throw new Error(`Élément toujours désactivé : ${step.selector}`);
+        throw new StepError("ELEMENT_DISABLED", `Élément toujours désactivé : ${step.selector}`, {
+          expected: `Élément ${step.selector} actif (non désactivé)`,
+          found: "Élément désactivé (disabled, aria-disabled ou curseur interdit)",
+          hint: "Une condition préalable manque peut-être (champ obligatoire vide, case non cochée) : compare avec la capture.",
+        });
       }
       return;
     }
@@ -227,18 +261,37 @@ export async function executeStep(page, baseUrl, step, timeouts) {
       const expectedText = (step.value ?? "").trim();
       if (!expectedText) {
         // Défense en profondeur (planner.js retire déjà ces étapes) : "".includes() passe toujours.
-        throw new Error("assert_text sans texte attendu : l'assertion ne vérifierait rien.");
+        throw new StepError("INVALID_STEP", "assert_text sans texte attendu : l'assertion ne vérifierait rien.", {
+          expected: "Un texte précis à retrouver",
+          found: "Texte attendu vide",
+          hint: "Indique dans le ticket le message exact attendu à l'écran.",
+        });
       }
       const actualText = (await locator.innerText()).trim();
       if (!actualText.includes(expectedText)) {
-        throw new Error(
-          `Texte attendu introuvable. Attendu (contient) : "${step.value}" — trouvé : "${actualText}"`
+        const caseOnly = actualText.toLowerCase().includes(expectedText.toLowerCase());
+        throw new StepError(
+          "TEXT_MISMATCH",
+          `Texte attendu introuvable. Attendu (contient) : "${step.value}" — trouvé : "${actualText}"`,
+          {
+            expected: `Le texte contient « ${expectedText} »`,
+            found: actualText ? `« ${actualText} »` : "L'élément est vide",
+            hint: caseOnly
+              ? "Seule la casse (majuscules/minuscules) diffère."
+              : actualText
+                ? "Vérifie le libellé exact : accents, ponctuation, langue du site (FR/AR) ou texte qui a changé."
+                : "L'élément est présent mais ne contient aucun texte : il se remplit peut-être après un chargement.",
+          }
         );
       }
       return;
     }
 
     default:
-      throw new Error(`Type d'étape inconnu : "${step.type}"`);
+      throw new StepError("INVALID_STEP", `Type d'étape inconnu : "${step.type}"`, {
+        expected: "navigate, click, fill, select, assert_visible, assert_enabled, assert_text, assert_url ou go_back",
+        found: `Type « ${step.type} »`,
+        hint: "Régénère le scénario : l'IA a inventé un type d'étape.",
+      });
   }
 }
