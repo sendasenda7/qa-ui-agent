@@ -53,11 +53,15 @@ test("un scénario bien formé passe normalement, avec confiance 100", async () 
     JSON.stringify({
       ticketSummary: "test",
       warnings: [],
-      steps: [{ type: "navigate", description: "aller sur la page" }],
+      steps: [
+        { type: "navigate", description: "aller sur la page" },
+        { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" },
+      ],
     }),
     async () => {
       const scenario = await generateScenario("un ticket", crawlResult);
-      assert.equal(scenario.steps.length, 1);
+      assert.equal(scenario.steps.length, 2);
+      assert.deepEqual(scenario.warnings, []);
       assert.equal(scenario.confidence, 100);
     }
   );

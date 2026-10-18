@@ -259,11 +259,27 @@ export async function callGroqWithRetry(apiKey, body) {
   throw lastError;
 }
 
-/** Score de confiance : 100 au départ, -15 par avertissement réel. Partagé entre la
- * validation mécanique (validateScenario) et la relecture sémantique (reviewScenario),
- * pour que les deux passes pèsent de la même façon sur le score final. */
-function computeConfidence(stepCount, warningCount) {
-  return stepCount === 0 ? 0 : Math.max(0, 100 - warningCount * 15);
+/** Étapes qui CONTRÔLENT quelque chose (les autres, comme click ou fill, agissent sans rien vérifier). */
+const CHECK_STEP_TYPES = ["assert_visible", "assert_text", "assert_url", "assert_enabled"];
+
+/** Plafond de confiance d'un scénario qui ne contrôle rien : il "réussit" dès qu'il s'exécute. */
+const NO_CHECK_CONFIDENCE_CAP = 30;
+
+export const NO_CHECK_WARNING =
+  "Aucune vérification dans ce scénario : les étapes s'exécutent, mais rien n'est contrôlé (aucune étape de type assert_*). Un « réussi » ne prouve alors rien sur ce que demande le ticket.";
+
+function hasCheckStep(steps) {
+  return Array.isArray(steps) && steps.some((step) => CHECK_STEP_TYPES.includes(step?.type));
+}
+
+/** Score de confiance : 100 au départ, -15 par avertissement réel, et au plus 30 si le scénario
+ * ne contient aucune vérification. Partagé entre la validation mécanique (validateScenario) et
+ * la relecture sémantique (reviewScenario), pour que les deux passes pèsent de la même façon
+ * sur le score final. */
+function computeConfidence(steps, warningCount) {
+  if (!Array.isArray(steps) || steps.length === 0) return 0;
+  const base = Math.max(0, 100 - warningCount * 15);
+  return hasCheckStep(steps) ? base : Math.min(base, NO_CHECK_CONFIDENCE_CAP);
 }
 
 /**
@@ -358,7 +374,7 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
       ...scenario.warnings,
       `Relecture IA indisponible, scénario non re-vérifié sémantiquement : ${err.message}`,
     ];
-    return { ...scenario, warnings, confidence: computeConfidence(scenario.steps.length, warnings.length) };
+    return { ...scenario, warnings, confidence: computeConfidence(scenario.steps, warnings.length) };
   }
 
   if (issues.length === 0) {
@@ -366,7 +382,7 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
   }
 
   const warnings = [...scenario.warnings, ...issues.map((issue) => `Relecture IA : ${issue}`)];
-  return { ...scenario, warnings, confidence: computeConfidence(scenario.steps.length, warnings.length) };
+  return { ...scenario, warnings, confidence: computeConfidence(scenario.steps, warnings.length) };
 }
 
 /**
@@ -508,6 +524,12 @@ export function validateScenario(scenario, crawlResult) {
     return isCoherent;
   });
 
+  // Un scénario sans aucune vérification ne peut pas échouer sur ce que demande le ticket :
+  // on le signale, et il pèse sur la confiance (voir computeConfidence).
+  if (steps.length > 0 && !hasCheckStep(steps)) {
+    validationWarnings.push(NO_CHECK_WARNING);
+  }
+
   return {
     ...scenario,
     steps,
@@ -515,6 +537,6 @@ export function validateScenario(scenario, crawlResult) {
     // Score de confiance du PLAN généré (pas de l'exécution) : voir computeConfidence.
     // Ce n'est pas une estimation "IA" — juste le reflet direct des garde-fous
     // ci-dessus, donc toujours justifiable étape par étape depuis scenario.warnings.
-    confidence: computeConfidence(steps.length, validationWarnings.length),
+    confidence: computeConfidence(steps, validationWarnings.length),
   };
 }
