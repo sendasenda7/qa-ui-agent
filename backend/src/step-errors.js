@@ -26,6 +26,8 @@ export const ERROR_CODES = Object.freeze({
   URL_MISMATCH: "E-URL-001",
   NAVIGATION_ERROR: "E-NAV-001",
   TIMEOUT: "E-TMO-001",
+  CRAWL_EMPTY: "E-CRW-001",
+  PLAN_EMPTY: "E-PLN-001",
   UNKNOWN: "E-UNK-001",
 });
 
@@ -41,15 +43,28 @@ export const CATEGORY_LABELS = Object.freeze({
   URL_MISMATCH: "Adresse différente",
   NAVIGATION_ERROR: "Erreur de navigation",
   TIMEOUT: "Délai dépassé",
+  CRAWL_EMPTY: "Page vide à l'exploration",
+  PLAN_EMPTY: "Aucune étape générée",
   UNKNOWN: "Erreur inconnue",
 });
 
 const MAX_TECHNICAL_CHARS = 1500;
 const MAX_FIELD_CHARS = 400;
 
-/** Retire les codes de couleur du terminal que Playwright met dans ses messages. */
+/**
+ * Masque ce qui ne doit jamais finir dans un fichier de run ni dans le rapport : chemins du serveur
+ * et clés d'API (mêmes règles que `publicErrorMessage` dans app.js).
+ */
+function maskSensitive(text) {
+  return text
+    .replace(/[A-Za-z]:\\[^\s'"]+/g, "[chemin masqué]")
+    .replace(/\/(?:home|Users|root|var|tmp|opt|app|usr|etc|mnt)\/[^\s'"]+/g, "[chemin masqué]")
+    .replace(/gsk_[A-Za-z0-9]+/g, "[clé masquée]");
+}
+
+/** Retire les codes de couleur du terminal que Playwright met dans ses messages, puis masque les secrets. */
 function cleanTechnical(text) {
-  return String(text ?? "").replace(/\u001b\[[0-9;]*m/g, "").trim();
+  return maskSensitive(String(text ?? "").replace(/\u001b\[[0-9;]*m/g, "")).trim();
 }
 
 function clip(text, max) {
@@ -218,8 +233,10 @@ export function classifyError(err, step = {}) {
       });
     }
     if (!existsOtherwise) {
-      return new StepError("ELEMENT_NOT_FOUND", `Élément introuvable après ${seconds} s.`, {
-        expected: describeExpected(step),
+      const expected = describeExpected(step);
+      const isText = expected.startsWith("Texte «");
+      return new StepError("ELEMENT_NOT_FOUND", `${isText ? "Texte attendu" : "Élément"} introuvable après ${seconds} s.`, {
+        expected,
         found: "Aucun élément ne correspond à ce sélecteur sur la page",
         hint: ACTION_TYPES.includes(type)
           ? "La page a peut-être changé (autre langue, autre écran) ou l'élément n'est pas encore affiché."
@@ -238,6 +255,47 @@ export function classifyError(err, step = {}) {
   return new StepError("UNKNOWN", technical ? clip(technical.split("\n")[0], 200) : "Erreur inattendue pendant l'étape.", {
     expected: selector ? target : null,
     hint: "Voir le détail technique ci-dessous.",
+    technical,
+  });
+}
+
+/**
+ * Exploration qui ne voit RIEN : ni élément interactif, ni texte. Dans ce cas l'IA n'a rien à
+ * utiliser pour écrire le scénario ; autant arrêter tout de suite, avec la cause probable, plutôt
+ * que d'appeler l'IA pour obtenir un message flou. Renvoie null si la page contient quelque chose.
+ * Exporté pour les tests.
+ */
+export function describeEmptyCrawl(crawlResult) {
+  const interactive = Number(crawlResult?.elementCount ?? crawlResult?.elements?.length ?? 0);
+  const texts = Array.isArray(crawlResult?.textElements) ? crawlResult.textElements.length : 0;
+  if (interactive > 0 || texts > 0) return null;
+
+  const title = typeof crawlResult?.title === "string" ? crawlResult.title.trim() : "";
+  return new StepError("CRAWL_EMPTY", "Aucun élément détecté sur la page : l'exploration n'a rien trouvé à tester.", {
+    expected: "Une page avec des champs, des boutons ou des textes",
+    found: title
+      ? `0 élément interactif et 0 texte visible (titre de la page : « ${title} »)`
+      : "0 élément interactif et 0 texte visible (page vide ou sans titre)",
+    hint:
+      "Le site est peut-être endormi ou en panne (un site hébergé gratuitement met parfois 30 s à se réveiller), " +
+      "ou la page n'a pas fini de s'afficher. Ouvre l'adresse dans ton navigateur, puis essaie l'écran Explore ; " +
+      "si l'appli est lente, augmente RENDER_TIMEOUT_MS.",
+  });
+}
+
+/**
+ * Classe une erreur qui fait planter le pipeline d'un run (hors étape de scénario) :
+ *  - avec `phase === "crawling"` (appelé autour du crawler), un échec de chargement de la page est
+ *    une erreur de navigation (site injoignable, DNS, certificat, lenteur) ;
+ *  - sinon (IA, navigateur, disque), le message d'origine est gardé tel quel : il est déjà
+ *    explicite (clé Groq manquante, quota dépassé...) et le masquer ferait perdre l'information.
+ * Exporté pour les tests.
+ */
+export function classifyRunError(err, phase) {
+  if (err instanceof StepError) return err;
+  if (phase === "crawling") return classifyError(err, { type: "navigate" });
+  const technical = clip(cleanTechnical(err?.message), MAX_TECHNICAL_CHARS);
+  return new StepError("UNKNOWN", clip(technical.split("\n")[0] || "Erreur inattendue pendant le run.", MAX_FIELD_CHARS), {
     technical,
   });
 }

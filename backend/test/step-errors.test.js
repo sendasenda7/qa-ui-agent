@@ -323,3 +323,15 @@ test("collectPageSnapshot : retire le « × » de fermeture, ignore les faux bou
     globalThis.getComputedStyle = previous.getComputedStyle;
   }
 });
+
+test("classifyError : un texte attendu introuvable est annoncé comme tel, un élément comme un élément", () => {
+  const raw = new Error(playwrightMessage("locator.waitFor: Timeout 10000ms exceeded.", "waiting for locator('text=\"Mot de passe incorrect\"').first() to be visible"));
+  const text = classifyError(raw, { type: "assert_text", selector: 'text="Mot de passe incorrect"', value: "Mot de passe incorrect" });
+  assert.equal(text.category, "ELEMENT_NOT_FOUND");
+  assert.equal(text.message, "Texte attendu introuvable après 10 s.");
+  const click = classifyError(
+    new Error(playwrightMessage("locator.click: Timeout 10000ms exceeded.", "waiting for locator('#go')")),
+    { type: "click", selector: "#go" }
+  );
+  assert.equal(click.message, "Élément introuvable après 10 s.");
+});

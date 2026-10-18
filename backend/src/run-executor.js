@@ -5,7 +5,7 @@ import { saveRun, readRun } from "./run-store.js";
 import { needsAnalysis, runAnalysis } from "./run-analysis.js";
 import { DEFAULT_BROWSER_ENGINE, resolveBrowserEngine } from "./browser.js";
 import { HttpError } from "./http-error.js";
-import { stripAnsi } from "./page-utils.js";
+import { StepError, describeEmptyCrawl, classifyRunError } from "./step-errors.js";
 
 const DEFAULT_STEP_TIMEOUT_MS = 10000;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30000;
@@ -77,7 +77,24 @@ function makeRunResult(runId, url, phase, browserEngine = DEFAULT_BROWSER_ENGINE
     results: [],
     crawl: null,
     error: null,
+    // Détail structuré de l'erreur du pipeline (code, attendu/trouvé/piste) : voir step-errors.js.
+    failure: null,
   };
+}
+
+function plural(count, one, many) {
+  return `${count} ${count > 1 ? many : one}`;
+}
+
+/**
+ * Enregistre sur le run l'erreur qui l'a fait planter. Un échec reconnu (site injoignable, page vide,
+ * IA sans étape) reçoit un code et une piste ; sinon le message d'origine est conservé tel quel.
+ */
+function recordPipelineError(runResult, err) {
+  const failure = classifyRunError(err);
+  // Phrase lisible (première ligne, secrets masqués) ; le message complet reste dans failure.technical.
+  runResult.error = failure.message;
+  runResult.failure = failure.toFailure();
 }
 
 /**
@@ -150,8 +167,8 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
   } catch (err) {
     console.error(`[run ${runId}] erreur :`, err.message);
     runResult.status = "error";
+    recordPipelineError(runResult, err);
     runResult.phase = "error";
-    runResult.error = stripAnsi(err.message);
   } finally {
     runResult.currentStep = null;
     runResult.finishedAt = new Date().toISOString();
@@ -220,21 +237,41 @@ export async function startRun(
 
   async function execute() {
     try {
-      const crawlResult = await crawl(url, { navigationTimeoutMs, browserEngine: engine });
+      let crawlResult;
+      try {
+        crawlResult = await crawl(url, { navigationTimeoutMs, browserEngine: engine });
+      } catch (crawlErr) {
+        // Seule l'exploration est classée comme erreur de navigation (site injoignable, DNS, certificat).
+        throw classifyRunError(crawlErr, "crawling");
+      }
       runResult.crawl = {
         title: crawlResult.title,
         elementCount: crawlResult.elementCount,
         durationMs: crawlResult.durationMs,
         screenshotPath: crawlResult.screenshotPath,
       };
+      await saveRun(runId, state);
+
+      // Page vide : inutile (et trompeur) d'appeler l'IA, qui n'aurait aucun élément à utiliser.
+      const emptyCrawl = describeEmptyCrawl(crawlResult);
+      if (emptyCrawl) throw emptyCrawl;
+
       runResult.phase = "planning";
       await saveRun(runId, state);
 
       const scenario = await plan(ticketText, crawlResult, { deepReview });
       if (!scenario.steps || scenario.steps.length === 0) {
         const reasons = (scenario.warnings || []).join(" ");
-        throw new Error(
-          `L'IA n'a généré aucune étape exécutable pour ce ticket. ${reasons}`.trim()
+        throw new StepError(
+          "PLAN_EMPTY",
+          `L'IA n'a généré aucune étape exécutable pour ce ticket. ${reasons}`.trim(),
+          {
+            expected: "Un scénario d'au moins une étape",
+            // Ce que l'exploration a fourni à l'IA : permet de voir tout de suite si le problème vient
+            // de la page (rien détecté) ou de l'IA (elle avait de quoi écrire un scénario).
+            found: `Aucune étape générée — l'exploration lui a fourni ${plural(crawlResult.elementCount ?? 0, "élément interactif", "éléments interactifs")} et ${plural((crawlResult.textElements || []).length, "texte visible", "textes visibles")}`,
+            hint: "Reformule le ticket en citant les libellés exacts affichés à l'écran, ou vérifie dans Explore que la page contient bien les éléments attendus.",
+          }
         );
       }
       state.scenario = scenario;
@@ -251,8 +288,8 @@ export async function startRun(
     } catch (err) {
       console.error(`[run ${runId}] erreur :`, err.message);
       runResult.status = "error";
+      recordPipelineError(runResult, err);
       runResult.phase = "error";
-      runResult.error = stripAnsi(err.message);
       runResult.finishedAt = new Date().toISOString();
       try {
         await saveRun(runId, state);

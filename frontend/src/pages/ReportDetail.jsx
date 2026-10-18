@@ -6,6 +6,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
 import RunAnalysis from "../components/RunAnalysis.jsx";
 import StepFailure from "../components/StepFailure.jsx";
+import RunError from "../components/RunError.jsx";
 import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { browserEngineLabel } from "../lib/browser-engines.js";
@@ -198,11 +199,7 @@ export default function ReportDetail() {
         )}
       </section>
 
-      {runResult.error && (
-        <div className="bg-danger-muted border border-danger/30 text-danger text-sm rounded-xl p-3">
-          {runResult.error}
-        </div>
-      )}
+      <RunError runResult={runResult} />
 
       {/* Cartes de stats */}
       <section className="grid grid-cols-2 gap-3">
