@@ -53,7 +53,7 @@ npm run crawl -- https://the-internet.herokuapp.com/login
 
 Prend le texte d'un ticket + le résultat du crawl, et appelle Groq (mode JSON strict) pour
 générer un scénario structuré : une liste d'étapes (`navigate`, `click`, `fill`, `select`,
-`assert_visible`, `assert_enabled`, `assert_text`, `go_back`), chacune avec un sélecteur.
+`assert_visible`, `assert_enabled`, `assert_text`, `assert_url`, `go_back`), chacune avec un sélecteur.
 
 **Garde-fous mécaniques** (`validateScenario`, testés dans `test/planner.test.js`) :
 - **Anti-hallucination** : tout sélecteur utilisé par l'IA qui n'existe pas dans la liste fournie
@@ -184,6 +184,15 @@ pas être dans le crawl. Pour lui, et seulement pour `assert_visible` / `assert_
 utiliser `role=alert`, `role=status` ou `text="texte exact"`. Ces étapes sont marquées
 `selectorKind: "dynamic"`. Un texte inventé ne donne jamais un faux « réussi » : l'étape échoue
 (élément introuvable). `click`, `fill` et `select` restent limités aux éléments listés par le crawl.
+
+## Vérifier l'adresse de la page (`assert_url`)
+
+L'étape `assert_url` vérifie que l'adresse (URL) de la page **contient** un texte, par exemple
+`/association`. Elle attend jusqu'au timeout des étapes : une redirection ou un changement de route
+d'une appli monopage arrive quelques instants après le clic. Le ticket doit donner l'adresse attendue
+(l'IA n'en invente jamais). Une adresse vide, `/` ou `http` serait vraie sur n'importe quelle page :
+ces étapes sont retirées avec un avertissement. En cas d'échec, le rapport affiche l'adresse réellement
+atteinte, avec la valeur des paramètres sensibles (`token`, `code`, `session`...) masquée.
 
 ## Configuration (`backend/.env`)
 

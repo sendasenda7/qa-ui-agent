@@ -48,3 +48,52 @@ export async function goBackAndSettle(page, { timeout = 30000, settleTimeoutMs }
 export function stripAnsi(text) {
   return String(text ?? "").replace(/\u001b\[[0-9;]*m/g, "");
 }
+
+const SENSITIVE_QUERY_KEY = /token|key|secret|pass|pwd|code|auth|session|sig/i;
+
+/**
+ * URL affichable dans un rapport : la valeur des paramètres qui ressemblent à un secret
+ * (token, code, session...) est masquée, et le texte est limité à 200 caractères. Une adresse de
+ * réinitialisation de mot de passe ne doit pas finir en clair dans les fichiers de runs ni le PDF.
+ */
+export function redactUrl(value) {
+  const text = String(value ?? "");
+  let shown = text;
+  try {
+    const url = new URL(text);
+    for (const key of [...url.searchParams.keys()]) {
+      if (SENSITIVE_QUERY_KEY.test(key)) url.searchParams.set(key, "***");
+    }
+    shown = url.toString();
+  } catch {
+    // pas une URL valide (about:blank...) : affichée telle quelle
+  }
+  return shown.length > 200 ? `${shown.slice(0, 199)}…` : shown;
+}
+
+/**
+ * Une adresse attendue qui serait vraie sur presque n'importe quelle page ("/", "http", ":") ne
+ * prouve rien : elle donnerait un faux « réussi ». Il faut au moins une lettre ou un chiffre, et
+ * pas seulement un protocole.
+ */
+export function isMeaningfulUrlFragment(value) {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  return /[a-z0-9]/i.test(v) && !/^https?:?\/{0,2}$/i.test(v);
+}
+
+/**
+ * Attend (jusqu'à `timeout`) que l'adresse de la page CONTIENNE `expected`. On attend plutôt que de
+ * lire l'adresse une fois : après un clic, la redirection ou le changement de route d'une appli
+ * monopage arrive quelques instants plus tard. Échoue avec l'adresse réellement atteinte.
+ */
+export async function waitForUrlContaining(page, expected, timeout) {
+  const wanted = String(expected ?? "").trim();
+  try {
+    await page.waitForURL((url) => url.href.includes(wanted), { timeout, waitUntil: "commit" });
+  } catch {
+    throw new Error(
+      `Adresse attendue (contient) : "${wanted}" — adresse actuelle : "${redactUrl(page.url())}"`
+    );
+  }
+}

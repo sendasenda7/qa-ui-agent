@@ -1,5 +1,6 @@
 import { launchBrowser, resolveBrowserEngine } from "./browser.js";
-import { gotoAndSettle, goBackAndSettle, stripAnsi } from "./page-utils.js";
+import { gotoAndSettle, goBackAndSettle, stripAnsi, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
+import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { mkdir } from "fs/promises";
 
 /**
@@ -50,16 +51,7 @@ export async function runScenario(url, scenario, options = {}) {
     for (const [index, step] of scenario.steps.entries()) {
       await notify({ type: "step_start", index, step });
 
-      const stepResult = {
-        index,
-        type: step.type,
-        description: step.description,
-        selector: step.selector,
-        status: "passed",
-        error: null,
-        screenshot: null,
-        durationMs: 0,
-      };
+      const stepResult = newStepResult(index, step);
 
       const startedAt = Date.now();
       try {
@@ -108,8 +100,25 @@ export async function runScenario(url, scenario, options = {}) {
   };
 }
 
-// Types d'étape qui n'agissent pas sur un élément précis.
-const STEPS_WITHOUT_SELECTOR = ["navigate", "go_back"];
+/**
+ * Résultat initial d'une étape (enregistré dans le fichier du run). L'adresse attendue d'un
+ * "assert_url" est la seule `value` recopiée (pour l'afficher dans le rapport) : celle d'un "fill"
+ * peut être un mot de passe et ne doit jamais se retrouver dans les fichiers de runs ni le PDF.
+ * Exporté pour les tests.
+ */
+export function newStepResult(index, step) {
+  return {
+    index,
+    type: step.type,
+    description: step.description,
+    selector: step.selector,
+    ...(step.type === "assert_url" ? { expected: step.value ?? null } : {}),
+    status: "passed",
+    error: null,
+    screenshot: null,
+    durationMs: 0,
+  };
+}
 
 // Combien de temps (ms, au plus) on laisse au sélecteur principal pour apparaître avant d'essayer
 // le sélecteur de secours.
@@ -170,6 +179,15 @@ export async function executeStep(page, baseUrl, step, timeouts) {
     case "go_back":
       await goBackAndSettle(page, { timeout: navigationTimeoutMs });
       return;
+
+    case "assert_url": {
+      if (!isMeaningfulUrlFragment(step.value)) {
+        // Défense en profondeur (planner.js retire déjà ces étapes) : "/" est vrai sur toute page.
+        throw new Error("assert_url sans adresse exploitable : l'assertion ne vérifierait rien.");
+      }
+      await waitForUrlContaining(page, step.value, stepTimeoutMs);
+      return;
+    }
 
     case "click":
       await (await locatorFor()).click({ timeout: stepTimeoutMs });
