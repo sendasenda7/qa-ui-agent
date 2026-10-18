@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTextCandidates } from "../src/crawler.js";
+import { buildTextCandidates, resolveTextSelectors } from "../src/crawler.js";
 import { validateScenario, isDynamicAssertionSelector } from "../src/planner.js";
 import { resolveLocator } from "../src/runner.js";
 
@@ -93,4 +93,49 @@ test("planner : un texte dynamique contenant légitimement des guillemets échap
   );
   assert.equal(steps[0].selector, 'text="Dire \\"non\\""');
   assert.equal(steps[0].selectorValid, true);
+});
+
+test("texte avec une balise : dernier candidat = début du texte (:has-text), sans antislash ni regex", () => {
+  const text = "Prix (HTML) : 10.5 €/mois [promo]";
+  const candidates = buildTextCandidates({ tag: "p", kind: "texte", ariaRole: null, text });
+  assert.deepEqual(candidates, [`text="${text}"`, `p:has-text("${text}")`]);
+  // L'IA recopie les sélecteurs dans du JSON : aucun antislash à mal échapper.
+  assert.equal(candidates.some((c) => c.includes("\\")), false);
+});
+
+test("sans balise connue ou avec une balise douteuse : pas de candidat :has-text", () => {
+  assert.equal(buildTextCandidates({ kind: "texte", ariaRole: null, text: "Bonjour" }).length, 1);
+  assert.equal(buildTextCandidates({ tag: "p > a", kind: "texte", ariaRole: null, text: "Bonjour" }).length, 1);
+});
+
+/** Fausse page : chaque sélecteur désigne autant d'éléments que dans `counts` (0 si absent). */
+function fakePage(counts) {
+  return { locator: (selector) => ({ count: async () => counts[selector] ?? 0 }) };
+}
+
+test("paragraphe plus long que 120 caractères : l'exact ne trouve rien, le début du texte le retrouve", async () => {
+  // Texte tel que le crawler le garde : les 120 premiers caractères du paragraphe complet.
+  const kept = "This domain is for use in documentation examples without needing permission. This is not a service; avoid relyi";
+  const item = { tag: "p", kind: "texte", ariaRole: null, text: kept };
+  const [exact, substring] = buildTextCandidates(item);
+
+  // L'exact (texte entier de l'élément) ne correspond à rien ; la sous-chaîne désigne un seul élément.
+  const resolved = await resolveTextSelectors(fakePage({ [exact]: 0, [substring]: 1 }), [item]);
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].selector, substring);
+  assert.match(resolved[0].selector, /^p:has-text\("This domain is for use/);
+});
+
+test("le sélecteur exact reste prioritaire quand il désigne un seul élément", async () => {
+  const item = { tag: "p", kind: "texte", ariaRole: null, text: "Connexion" };
+  const [exact, substring] = buildTextCandidates(item);
+  const resolved = await resolveTextSelectors(fakePage({ [exact]: 1, [substring]: 1 }), [item]);
+  assert.equal(resolved[0].selector, exact);
+});
+
+test("un texte présent plusieurs fois (sous-chaîne ambiguë) reste écarté plutôt que mal ciblé", async () => {
+  const item = { tag: "p", kind: "texte", ariaRole: null, text: "Merci" };
+  const [exact, substring] = buildTextCandidates(item);
+  const resolved = await resolveTextSelectors(fakePage({ [exact]: 0, [substring]: 3 }), [item]);
+  assert.deepEqual(resolved, []);
 });
