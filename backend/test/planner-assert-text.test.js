@@ -8,6 +8,7 @@ test("retire un assert_text sans texte attendu et l'explique dans les warnings",
   const { steps, warnings } = validateScenario(
     {
       steps: [
+        { type: "navigate", description: "ouvrir" },
         { type: "assert_text", selector: "#msg", value: "", description: "vide" },
         { type: "assert_text", selector: "#msg", description: "absente" },
         { type: "assert_text", selector: "#msg", value: "   ", description: "espaces" },
@@ -16,6 +17,6 @@ test("retire un assert_text sans texte attendu et l'explique dans les warnings",
     },
     crawlResult
   );
-  assert.deepEqual(steps.map((s) => s.description), ["ok"]);
+  assert.deepEqual(steps.map((s) => s.description), ["ouvrir", "ok"]);
   assert.equal(warnings.filter((w) => w.includes("assert_text")).length, 3);
 });

@@ -268,6 +268,10 @@ const NO_CHECK_CONFIDENCE_CAP = 30;
 export const NO_CHECK_WARNING =
   "Aucune vérification dans ce scénario : les étapes s'exécutent, mais rien n'est contrôlé (aucune étape de type assert_*). Un « réussi » ne prouve alors rien sur ce que demande le ticket.";
 
+/** Le navigateur démarre sur une page blanche : sans étape « navigate » au début, rien n'est ouvert. */
+export const NO_OPEN_WARNING =
+  "Le scénario ne commençait pas par l'ouverture de la page (le navigateur démarre sur une page blanche) : une étape « Ouvrir la page » a été ajoutée au début.";
+
 function hasCheckStep(steps) {
   return Array.isArray(steps) && steps.some((step) => CHECK_STEP_TYPES.includes(step?.type));
 }
@@ -524,19 +528,30 @@ export function validateScenario(scenario, crawlResult) {
     return isCoherent;
   });
 
+  // L'IA oublie parfois l'ouverture de la page : le test démarrerait alors sur une page blanche et
+  // échouerait sur la première saisie ou le premier clic, avec un message trompeur. On la rétablit.
+  let finalSteps = steps;
+  if (steps.length > 0 && steps[0].type !== "navigate") {
+    finalSteps = [
+      { type: "navigate", selector: null, value: null, description: "Ouvrir la page", selectorValid: true },
+      ...steps,
+    ];
+    validationWarnings.push(NO_OPEN_WARNING);
+  }
+
   // Un scénario sans aucune vérification ne peut pas échouer sur ce que demande le ticket :
   // on le signale, et il pèse sur la confiance (voir computeConfidence).
-  if (steps.length > 0 && !hasCheckStep(steps)) {
+  if (finalSteps.length > 0 && !hasCheckStep(finalSteps)) {
     validationWarnings.push(NO_CHECK_WARNING);
   }
 
   return {
     ...scenario,
-    steps,
+    steps: finalSteps,
     warnings: validationWarnings,
     // Score de confiance du PLAN généré (pas de l'exécution) : voir computeConfidence.
     // Ce n'est pas une estimation "IA" — juste le reflet direct des garde-fous
     // ci-dessus, donc toujours justifiable étape par étape depuis scenario.warnings.
-    confidence: computeConfidence(steps, validationWarnings.length),
+    confidence: computeConfidence(finalSteps, validationWarnings.length),
   };
 }

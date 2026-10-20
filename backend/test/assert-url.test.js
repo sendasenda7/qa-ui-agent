@@ -25,17 +25,18 @@ test("redactUrl masque les paramètres sensibles et tronque", () => {
 test("assert_url n'a pas besoin de sélecteur (liste partagée planner/runner)", () => {
   assert.ok(STEPS_WITHOUT_SELECTOR.includes("assert_url"));
   const { steps } = validateScenario(
-    { steps: [{ type: "assert_url", selector: null, value: "/association", description: "URL" }] },
+    { steps: [{ type: "navigate", description: "ouvrir" }, { type: "assert_url", selector: null, value: "/association", description: "URL" }] },
     { elements: [] }
   );
-  assert.equal(steps.length, 1);
-  assert.equal(steps[0].selectorValid, true);
+  assert.equal(steps.length, 2);
+  assert.equal(steps[1].selectorValid, true);
 });
 
 test("planner : une adresse vide ou triviale est retirée avec un avertissement", () => {
   const { steps, warnings } = validateScenario(
     {
       steps: [
+        { type: "navigate", description: "ouvrir" },
         { type: "assert_url", value: "/", description: "slash" },
         { type: "assert_url", value: "", description: "vide" },
         { type: "assert_url", description: "absente" },
@@ -45,7 +46,7 @@ test("planner : une adresse vide ou triviale est retirée avec un avertissement"
     },
     { elements: [] }
   );
-  assert.deepEqual(steps.map((s) => s.description), ["ok"]);
+  assert.deepEqual(steps.map((s) => s.description), ["ouvrir", "ok"]);
   assert.equal(warnings.filter((w) => w.includes("assert_url")).length, 4);
 });
 
