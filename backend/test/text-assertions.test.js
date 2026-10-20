@@ -36,6 +36,7 @@ test("planner : un texte du crawl est valide ; un message post-action est accept
   const { steps, warnings } = validateScenario(
     {
       steps: [
+        { type: "navigate", description: "ouvrir" },
         { type: "assert_text", selector: 'role=heading[name="Connexion"]', value: "Connexion", description: "titre" },
         { type: "click", selector: "#go", description: "clic" },
         { type: "assert_text", selector: "role=alert", value: "Erreur", description: "alerte" },
@@ -47,8 +48,8 @@ test("planner : un texte du crawl est valide ; un message post-action est accept
     },
     crawl
   );
-  assert.deepEqual(steps.map((s) => s.selectorValid), [true, true, true, true, false, false, false]);
-  assert.deepEqual(steps.map((s) => s.selectorKind), [undefined, undefined, "dynamic", "dynamic", undefined, undefined, undefined]);
+  assert.deepEqual(steps.map((s) => s.selectorValid), [true, true, true, true, true, false, false, false]);
+  assert.deepEqual(steps.map((s) => s.selectorKind), [undefined, undefined, undefined, "dynamic", "dynamic", undefined, undefined, undefined]);
   assert.equal(warnings.filter((w) => w.includes("halluciné")).length, 3);
 });
 
@@ -71,6 +72,7 @@ test("planner : un sélecteur recopié avec des guillemets échappés (\\\") est
   const { steps, warnings } = validateScenario(
     {
       steps: [
+        { type: "navigate", description: "ouvrir" },
         { type: "click", selector: 'text=\\"Je suis un Donateur\\"', description: "clic" },
         { type: "assert_visible", selector: 'text=\\"Espace donateur bientôt disponible\\"', description: "message après clic" },
         { type: "click", selector: 'text=\\"Inventé\\"', description: "inventé" },
@@ -78,21 +80,21 @@ test("planner : un sélecteur recopié avec des guillemets échappés (\\\") est
     },
     crawlWithCard
   );
-  assert.equal(steps[0].selector, 'text="Je suis un Donateur"');
-  assert.equal(steps[0].selectorValid, true);
-  assert.equal(steps[1].selector, 'text="Espace donateur bientôt disponible"');
-  assert.equal(steps[1].selectorKind, "dynamic");
-  assert.equal(steps[2].selectorValid, false, "click sur un texte absent du crawl reste refusé");
+  assert.equal(steps[1].selector, 'text="Je suis un Donateur"');
+  assert.equal(steps[1].selectorValid, true);
+  assert.equal(steps[2].selector, 'text="Espace donateur bientôt disponible"');
+  assert.equal(steps[2].selectorKind, "dynamic");
+  assert.equal(steps[3].selectorValid, false, "click sur un texte absent du crawl reste refusé");
   assert.equal(warnings.length, 1);
 });
 
 test("planner : un texte dynamique contenant légitimement des guillemets échappés n'est pas modifié", () => {
   const { steps } = validateScenario(
-    { steps: [{ type: "assert_visible", selector: 'text="Dire \\"non\\""', description: "citation" }] },
+    { steps: [{ type: "navigate", description: "ouvrir" }, { type: "assert_visible", selector: 'text="Dire \\"non\\""', description: "citation" }] },
     { elements: [], textElements: [] }
   );
-  assert.equal(steps[0].selector, 'text="Dire \\"non\\""');
-  assert.equal(steps[0].selectorValid, true);
+  assert.equal(steps[1].selector, 'text="Dire \\"non\\""');
+  assert.equal(steps[1].selectorValid, true);
 });
 
 test("texte avec une balise : dernier candidat = début du texte (:has-text), sans antislash ni regex", () => {

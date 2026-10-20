@@ -34,7 +34,7 @@ test("reviewScenario ajoute les problèmes trouvés aux warnings et baisse la co
     const scenario = {
       ticketSummary: "test",
       warnings: [],
-      steps: [{ type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
+      steps: [{ type: "navigate", description: "ouvrir la page" }, { type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
       confidence: 100,
     };
 
@@ -107,7 +107,7 @@ test("generateScenario avec deepReview: true fait bien les deux passes", async (
       JSON.stringify({
         ticketSummary: "test",
         warnings: [],
-        steps: [{ type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
+        steps: [{ type: "navigate", description: "ouvrir la page" }, { type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
       })
     );
   };
@@ -136,7 +136,7 @@ test("generateScenario sans deepReview ne fait qu'une seule passe (comportement 
       JSON.stringify({
         ticketSummary: "test",
         warnings: [],
-        steps: [{ type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
+        steps: [{ type: "navigate", description: "ouvrir la page" }, { type: "click", selector: "#continue-btn", description: "clic" }, { type: "assert_visible", selector: "#continue-btn", description: "bouton visible" }],
       })
     );
   };

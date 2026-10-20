@@ -5,7 +5,7 @@ import { saveRun, readRun } from "./run-store.js";
 import { needsAnalysis, runAnalysis } from "./run-analysis.js";
 import { DEFAULT_BROWSER_ENGINE, resolveBrowserEngine } from "./browser.js";
 import { HttpError } from "./http-error.js";
-import { StepError, describeEmptyCrawl, classifyRunError } from "./step-errors.js";
+import { StepError, describeEmptyCrawl, classifyRunError, countFlakySteps } from "./step-errors.js";
 
 const DEFAULT_STEP_TIMEOUT_MS = 10000;
 const DEFAULT_NAVIGATION_TIMEOUT_MS = 30000;
@@ -73,6 +73,8 @@ function makeRunResult(runId, url, phase, browserEngine = DEFAULT_BROWSER_ENGINE
     stepsTotal: 0,
     stepsRun: 0,
     stepsPassed: 0,
+    // Étapes réussies seulement à la relance : > 0 = test instable (voir runner.js).
+    flakySteps: 0,
     currentStep: null,
     results: [],
     crawl: null,
@@ -130,6 +132,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
       runResult.results[event.index] = event.result;
       runResult.stepsRun = runResult.results.length;
       runResult.stepsPassed = runResult.results.filter((r) => r?.status === "passed").length;
+      runResult.flakySteps = countFlakySteps(runResult.results);
       runResult.currentStep = null;
     }
     await persist();
@@ -151,6 +154,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
     runResult.stepsRun = finalResult.stepsRun;
     runResult.stepsPassed = finalResult.stepsPassed;
     runResult.results = finalResult.results;
+    runResult.flakySteps = countFlakySteps(runResult.results);
 
     // Analyses optionnelles (RTL, diff visuel). Le statut reste "running" pendant toute
     // l'analyse : le frontend arrête de relire un run dès qu'il n'est plus "running", il

@@ -91,8 +91,17 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
     if (stepA.description !== stepB.description) {
       warnings.push(
         `Étape ${i} : les descriptions diffèrent ("${stepA.description}" vs "${stepB.description}") — ` +
-          `probablement deux scénarios différents généré par l'IA, pas le même test rejoué.`
+          `probablement deux scénarios différents généré par l'IA, pas le même test rejoué : étape non comparée.`
       );
+      // Deux étapes qui ne sont pas la même (une page blanche contre la vraie page, par exemple) ne se
+      // comparent pas : le « diff » mesurerait deux pages différentes, pas une régression.
+      stepDiffs.push({
+        index: i,
+        description: stepB.description,
+        comparable: false,
+        reason: "Étapes différentes dans les deux runs (scénario régénéré par l'IA) : comparaison ignorée.",
+      });
+      continue;
     }
 
     if (!stepA.screenshot || !stepB.screenshot) {
@@ -128,6 +137,8 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
     scenarioLengthMismatch: totalStepsA !== totalStepsB,
     regressionCount: regressions.length,
     hasRegressions: regressions.length > 0,
+    // Étapes réellement comparées : 0 = aucun verdict possible (et non « aucune régression »).
+    comparedStepCount: comparableDiffs.length,
     maxDiffPercent,
     warnings,
     steps: stepDiffs,

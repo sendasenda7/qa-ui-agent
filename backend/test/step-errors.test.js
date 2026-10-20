@@ -335,3 +335,45 @@ test("classifyError : un texte attendu introuvable est annoncé comme tel, un é
   );
   assert.equal(click.message, "Élément introuvable après 10 s.");
 });
+
+test("enrichFailure : navigateur resté sur about:blank -> « la page n'a jamais été ouverte », pas « l'appli n'a pas fini de s'afficher »", async () => {
+  const failure = classifyError(
+    new Error(playwrightMessage("locator.fill: Timeout 10000ms exceeded.", "waiting for locator('#username')")),
+    { type: "fill", selector: "#username" }
+  );
+  const page = { url: () => "about:blank", evaluate: async () => ({ texts: [], actions: [] }) };
+
+  await enrichFailure(page, { type: "fill" }, failure);
+
+  assert.match(failure.found, /Aucune page ouverte/);
+  assert.match(failure.hint, /il manque une étape « navigate » au début/);
+  assert.equal(/RENDER_TIMEOUT_MS/.test(failure.hint), false);
+});
+
+test("enrichFailure : une page vraiment ouverte mais vide garde l'ancien diagnostic (affichage)", async () => {
+  const failure = classifyError(
+    new Error(playwrightMessage("locator.waitFor: Timeout 10000ms exceeded.", "waiting for locator('#x')")),
+    { type: "assert_visible", selector: "#x" }
+  );
+  const page = { url: () => "https://exemple.test/", evaluate: async () => ({ messages: [], texts: [], actions: [] }) };
+
+  await enrichFailure(page, { type: "assert_visible" }, failure);
+
+  assert.match(failure.hint, /RENDER_TIMEOUT_MS/);
+  assert.equal(/Aucune page ouverte/.test(failure.found), false);
+});
+
+test("enrichFailure : une page dont url() plante n'est pas prise pour une page blanche", async () => {
+  const failure = classifyError(
+    new Error(playwrightMessage("locator.waitFor: Timeout 10000ms exceeded.", "waiting for locator('#x')")),
+    { type: "assert_visible", selector: "#x" }
+  );
+  const page = {
+    url: () => {
+      throw new Error("page fermée");
+    },
+    evaluate: async () => ({ messages: [], texts: ["Titre"], actions: [] }),
+  };
+  await enrichFailure(page, { type: "assert_visible" }, failure);
+  assert.match(failure.found, /Textes visibles sur la page : « Titre »/);
+});

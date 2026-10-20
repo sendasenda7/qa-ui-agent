@@ -81,6 +81,7 @@ test("planner : le sélecteur de secours du crawl est copié dans l'étape", () 
   const { steps } = validateScenario(
     {
       steps: [
+        { type: "navigate", description: "ouvrir" },
         { type: "click", selector: 'role=button[name="Continuer"]', description: "a" },
         { type: "click", selector: "#lang", description: "b" },
         { type: "click", selector: 'role=button[name="Inventé"]', description: "c" },
@@ -88,8 +89,8 @@ test("planner : le sélecteur de secours du crawl est copié dans l'étape", () 
     },
     crawl
   );
-  assert.equal(steps[0].fallbackSelector, "html > body > button");
-  assert.equal("fallbackSelector" in steps[1], false);
-  assert.equal(steps[2].selectorValid, false);
+  assert.equal(steps[1].fallbackSelector, "html > body > button");
   assert.equal("fallbackSelector" in steps[2], false);
+  assert.equal(steps[3].selectorValid, false);
+  assert.equal("fallbackSelector" in steps[3], false);
 });

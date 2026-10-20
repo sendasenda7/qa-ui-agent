@@ -6,6 +6,8 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
 import RunAnalysis from "../components/RunAnalysis.jsx";
 import StepFailure from "../components/StepFailure.jsx";
+import AttemptsNote from "../components/AttemptsNote.jsx";
+import FlakyNotice from "../components/FlakyNotice.jsx";
 import RunError from "../components/RunError.jsx";
 import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
@@ -199,6 +201,7 @@ export default function ReportDetail() {
         )}
       </section>
 
+      <FlakyNotice runResult={runResult} />
       <RunError runResult={runResult} />
 
       {/* Cartes de stats */}
@@ -258,6 +261,7 @@ export default function ReportDetail() {
                   {step.type}('{step.selector ?? step.expected}')
                 </code>
               )}
+              <AttemptsNote result={step} />
               <StepFailure result={step} />
               <span className="text-[11px] text-text-faint">{step.durationMs}ms</span>
             </div>
