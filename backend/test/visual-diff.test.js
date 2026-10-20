@@ -143,3 +143,59 @@ test("compareRuns signale un avertissement quand les descriptions diffèrent à 
     assert.ok(report.warnings.some((w) => /descriptions diffèrent/.test(w)));
   });
 });
+test("compareRuns : deux étapes de description différente ne sont PAS comparées (pas de fausse régression)", async () => {
+  await withTempDir(async (dir) => {
+    const blank = path.join(dir, "blank.png");
+    const page = path.join(dir, "page.png");
+    // Une page blanche contre une page très différente : un diff brut dépasserait largement le seuil.
+    await writeFile(blank, makePng({ color: [255, 255, 255] }));
+    await writeFile(page, makePng({ color: [0, 0, 0] }));
+
+    const runA = { runResult: { runId: 1, results: [{ description: "Saisir le nom d'utilisateur", screenshot: blank }] } };
+    const runB = { runResult: { runId: 2, results: [{ description: "Ouvrir la page de connexion", screenshot: page }] } };
+
+    const report = await compareRuns(runA, runB, dir);
+
+    assert.equal(report.hasRegressions, false);
+    assert.equal(report.regressionCount, 0);
+    assert.equal(report.comparedStepCount, 0);
+    assert.equal(report.maxDiffPercent, null);
+    assert.equal(report.steps[0].comparable, false);
+    assert.match(report.steps[0].reason, /comparaison ignorée/);
+    assert.ok(report.warnings.some((w) => /descriptions diffèrent/.test(w) && /étape non comparée/.test(w)));
+  });
+});
+
+test("compareRuns : même description, pages différentes -> toujours une vraie régression", async () => {
+  await withTempDir(async (dir) => {
+    const before = path.join(dir, "before.png");
+    const after = path.join(dir, "after.png");
+    await writeFile(before, makePng({ color: [255, 255, 255] }));
+    await writeFile(after, makePng({ color: [0, 0, 0] }));
+
+    const runA = { runResult: { runId: 1, results: [{ description: "Ouvrir la page", screenshot: before }] } };
+    const runB = { runResult: { runId: 2, results: [{ description: "Ouvrir la page", screenshot: after }] } };
+
+    const report = await compareRuns(runA, runB, dir);
+
+    assert.equal(report.hasRegressions, true);
+    assert.equal(report.comparedStepCount, 1);
+    assert.ok(report.maxDiffPercent > 50);
+  });
+});
+
+test("compareRuns : comptage des étapes comparées quand une partie seulement l'est", async () => {
+  await withTempDir(async (dir) => {
+    const a = path.join(dir, "a.png");
+    await writeFile(a, makePng({}));
+
+    const runA = { runResult: { runId: 1, results: [{ description: "Étape 1", screenshot: a }, { description: "Ancienne étape 2", screenshot: a }] } };
+    const runB = { runResult: { runId: 2, results: [{ description: "Étape 1", screenshot: a }, { description: "Nouvelle étape 2", screenshot: a }] } };
+
+    const report = await compareRuns(runA, runB, dir);
+
+    assert.equal(report.stepCount, 2);
+    assert.equal(report.comparedStepCount, 1);
+    assert.equal(report.hasRegressions, false);
+  });
+});

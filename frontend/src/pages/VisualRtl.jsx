@@ -230,7 +230,7 @@ function VisualDiffTab() {
               <span className="text-xs text-text-muted">Delta visuel max</span>
               <span
                 className={`text-2xl font-semibold ${
-                  report.hasRegressions ? "text-danger" : "text-success"
+                  report.hasRegressions ? "text-danger" : report.maxDiffPercent === null ? "text-text-faint" : "text-success"
                 }`}
               >
                 {report.maxDiffPercent !== null ? `${report.maxDiffPercent}%` : "—"}

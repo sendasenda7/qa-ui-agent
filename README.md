@@ -66,6 +66,10 @@ générer un scénario structuré : une liste d'étapes (`navigate`, `click`, `f
 - **Validation structurelle** : un `steps` qui n'est pas un tableau, une étape qui n'est pas un
   objet, ou un type d'étape halluciné (hors de la liste connue) sont neutralisés avec un
   avertissement clair, plutôt que de planter plus tard dans `runner.js`.
+- **Ouverture de la page garantie** : si le scénario de l'IA ne commence pas par une étape `navigate`
+  (le navigateur démarre sur une page blanche et échouerait sur la première saisie), une étape « Ouvrir la
+  page » est ajoutée au début, avec un avertissement. Si un échec survient quand même sur `about:blank`, le
+  rapport l'explique (« la page n'a jamais été ouverte ») au lieu de parler d'un affichage trop lent.
 - **Score de confiance** (`scenario.confidence`) : 100% moins 15 points par avertissement réel —
   directement dérivé de `scenario.warnings`, jamais une estimation inventée (`computeConfidence`,
   partagée entre la validation mécanique et la relecture ci-dessous). **Plafonné à 30 %** quand le
@@ -129,7 +133,11 @@ comparaison est signalée `comparable: false` plutôt que de donner un résultat
 
 `compareRuns` détecte aussi et **signale** (au lieu de comparer en silence) : un nombre d'étapes
 différent entre les deux runs, ou des descriptions d'étape différentes au même index — deux
-indices que ce n'est probablement pas le même scénario rejoué.
+indices que ce n'est probablement pas le même scénario rejoué. Une étape dont la description diffère
+n'est **pas comparée** (`comparable: false`) : un « diff » entre deux étapes qui ne sont pas le même
+test (une page blanche contre la vraie page, par exemple) mesurerait deux pages différentes, pas une
+régression. Le rapport indique `comparedStepCount` ; à 0, l'interface affiche « Non comparable » au lieu
+d'un faux « Aucune régression ».
 
 ```bash
 npm run test-run -- <url> "<ticket>"   # une première fois, note le runId
@@ -158,7 +166,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 162 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — 189 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -199,6 +207,28 @@ d'une appli monopage arrive quelques instants après le clic. Le ticket doit don
 (l'IA n'en invente jamais). Une adresse vide, `/` ou `http` serait vraie sur n'importe quelle page :
 ces étapes sont retirées avec un avertissement. En cas d'échec, le rapport affiche l'adresse réellement
 atteinte, avec la valeur des paramètres sensibles (`token`, `code`, `session`...) masquée.
+
+## Relance automatique et tests instables
+
+Une page qui se met à jour, un réseau lent ou un élément qui apparaît une demi-seconde trop tard font
+échouer un test qui passerait une seconde plus tard. Une étape en échec est donc **relancée** (1 fois par
+défaut, réglable avec `STEP_RETRIES`), avec une attente plus courte que la première tentative
+(`STEP_RETRY_TIMEOUT_MS`).
+
+- **Relance sûre seulement** (`isRetryable`) : cible pas encore affichée, texte ou adresse qui s'affiche
+  à l'instant, navigation expirée. **Jamais** une erreur déterministe (étape invalide, sélecteur inventé
+  ou ambigu, DNS, certificat), ni un clic ou un retour arrière qui a pu s'exécuter avant de planter :
+  le refaire pourrait agir deux fois (ajouter deux fois au panier, reculer de deux pages).
+- **« Instable »** : une étape réussie seulement à la relance garde son statut `passed`, mais elle porte
+  `attempts` et `firstFailure` (le code et la phrase du premier échec). Le run reçoit `flakySteps`. Le
+  rapport affiche un bandeau « Test instable », un badge sur l'étape et la ligne correspondante dans le PDF.
+- Un échec confirmé après relances n'est pas masqué : l'erreur affichée est celle de la **dernière**
+  tentative, avec le nombre d'essais.
+
+**Voir la relance en action** (depuis `backend/`) : `node src/demo-instable.js`. Le script lance un vrai test
+sur une page locale dont le message n'apparaît qu'au bout de 4,5 s, alors que chaque étape n'attend que 2 s :
+la première tentative échoue, la relance réussit. Pas d'IA, le scénario est écrit à la main, donc le résultat
+est reproductible. Le run est enregistré comme les autres (ouvre « Reports »).
 
 ## Erreurs d'étape lisibles
 
@@ -254,6 +284,8 @@ Variables optionnelles :
 | `TRUST_PROXY` | Nombre de reverse proxys devant l'API (pour que l'anti-bruteforce voie la vraie IP) | désactivé |
 | `NETWORK_SETTLE_TIMEOUT_MS` | Attente max (ms) du « réseau calme » après chargement (les sites à carrousel/analytics ne se calment jamais : on continue ensuite) | `5000` |
 | `RENDER_TIMEOUT_MS` | Attente max (ms) qu'une appli monopage (Angular, React...) affiche son contenu avant de le lire/capturer (`0` = ne pas attendre) | `10000` |
+| `STEP_RETRIES` | Relances automatiques d'une étape en échec (`0` à `2`, `0` = aucune) | `1` |
+| `STEP_RETRY_TIMEOUT_MS` | Attente max (ms) lors d'une relance, plus courte que la première tentative | `3000` |
 | `JWT_LIFETIME` | Durée d'une session (`12h`, `7d`...) | `7d` |
 | `MAX_CONCURRENT_RUNS` | Nombre de runs (donc de Chromium) simultanés | `2` |
 | `VISUAL_DIFF_THRESHOLD_PERCENT` | % de pixels différents au-delà duquel une étape est une régression | `0.5` |

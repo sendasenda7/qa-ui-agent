@@ -118,13 +118,18 @@ function VisualDiffCard({ enabled, visualDiff }) {
 
   const { report, baselineRunId } = visualDiff;
   const regressedSteps = report.steps.filter((step) => step.isRegression);
+  // Aucune étape comparable (scénarios différents, captures manquantes) : pas de verdict, et surtout
+  // pas un faux « Aucune régression » rassurant. Les anciens rapports n'ont pas ce compteur.
+  const nothingCompared = !report.hasRegressions && (report.comparedStepCount ?? report.stepCount) === 0;
+  const badge = report.hasRegressions
+    ? `${report.regressionCount} régression(s)`
+    : nothingCompared
+      ? "Non comparable"
+      : "Aucune régression";
+  const tone = report.hasRegressions ? "danger" : nothingCompared ? "warning" : "success";
 
   return (
-    <AnalysisCard
-      title={title}
-      badge={report.hasRegressions ? `${report.regressionCount} régression(s)` : "Aucune régression"}
-      tone={report.hasRegressions ? "danger" : "success"}
-    >
+    <AnalysisCard title={title} badge={badge} tone={tone}>
       <p className="text-sm">
         Comparé au run{" "}
         <Link to={`/reports/${baselineRunId}`} className="text-accent-blue font-mono">
