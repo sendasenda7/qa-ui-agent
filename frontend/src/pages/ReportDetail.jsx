@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link, Navigate } from "react-router-dom";
-import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown, StickyNote, Check, ExternalLink } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft, RotateCw, FileDown, FileCode, FileJson, StickyNote, Check, ExternalLink } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
@@ -9,7 +9,7 @@ import StepFailure from "../components/StepFailure.jsx";
 import AttemptsNote from "../components/AttemptsNote.jsx";
 import FlakyNotice from "../components/FlakyNotice.jsx";
 import RunError from "../components/RunError.jsx";
-import { getRun, replayRun, saveRunNotes, screenshotUrl } from "../lib/api.js";
+import { getRun, replayRun, saveRunNotes, screenshotUrl, downloadRunExport } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { browserEngineLabel } from "../lib/browser-engines.js";
 
@@ -20,6 +20,8 @@ export default function ReportDetail() {
   const [error, setError] = useState(null);
   const [replaying, setReplaying] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  // Format du rapport CI en cours de téléchargement ("junit" ou "json"), sinon null.
+  const [exportingFormat, setExportingFormat] = useState(null);
 
   useEffect(() => {
     getRun(id)
@@ -47,6 +49,17 @@ export default function ReportDetail() {
       setError(`Export PDF impossible : ${err.message}`);
     } finally {
       setExportingPdf(false);
+    }
+  }
+
+  async function handleExportReport(format) {
+    setExportingFormat(format);
+    try {
+      await downloadRunExport(id, format);
+    } catch (err) {
+      setError(`Export ${format === "junit" ? "JUnit" : "JSON"} impossible : ${err.message}`);
+    } finally {
+      setExportingFormat(null);
     }
   }
 
@@ -126,6 +139,24 @@ export default function ReportDetail() {
           )}
           {exportingPdf ? "Génération..." : "Exporter en PDF"}
         </button>
+
+        {/* Rapports lisibles par une CI (GitHub Actions, GitLab, Jenkins...). Un run en cours n'en a pas. */}
+        {[
+          { format: "junit", label: "JUnit XML", Icon: FileCode },
+          { format: "json", label: "JSON", Icon: FileJson },
+        ].map(({ format, label, Icon }) => (
+          <button
+            key={format}
+            type="button"
+            onClick={() => handleExportReport(format)}
+            disabled={exportingFormat !== null || runResult.status === "running"}
+            title={runResult.status === "running" ? "Disponible une fois le run terminé" : `Télécharger le rapport ${label}`}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface disabled:opacity-60"
+          >
+            {exportingFormat === format ? <Loader2 size={13} className="animate-spin" /> : <Icon size={13} />}
+            {label}
+          </button>
+        ))}
       </div>
 
       <header className="flex flex-col gap-2">

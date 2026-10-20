@@ -16,6 +16,9 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── report-export.js     # Export d'un run en JUnit XML et en JSON (fonctions pures)
+│   │   ├── report-cli.js        # Logique de la commande export-report (testée)
+│   │   ├── export-report.js     # Point d'entrée : npm run export-report
 │   │   ├── step-errors.js       # Erreurs d'étape structurées : catégorie, code stable, attendu/trouvé/piste
 │   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay) + limite de runs
 │   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel)
@@ -166,7 +169,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 189 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — 213 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -207,6 +210,70 @@ d'une appli monopage arrive quelques instants après le clic. Le ticket doit don
 (l'IA n'en invente jamais). Une adresse vide, `/` ou `http` serait vraie sur n'importe quelle page :
 ces étapes sont retirées avec un avertissement. En cas d'échec, le rapport affiche l'adresse réellement
 atteinte, avec la valeur des paramètres sensibles (`token`, `code`, `session`...) masquée.
+
+## Exporter un rapport pour une CI (JUnit XML et JSON)
+
+Un run terminé s'exporte en **JUnit XML** (lu par GitHub Actions, GitLab CI, Jenkins, Azure DevOps...) ou en
+**JSON** (format stable et versionné : `schemaVersion`). Trois façons de l'obtenir :
+
+- **Interface** : boutons « JUnit XML » et « JSON » en haut du rapport d'un run.
+- **API** : `GET /api/runs/:id/export?format=junit|json` (token requis ; `409` si le run est encore en cours).
+- **Ligne de commande**, sur les runs de `backend/runs/` :
+
+```
+npm run export-report -- <runId|latest> [--format junit|json] [--out fichier] [--fail-on-failure]
+```
+
+`latest` = le run terminé le plus récent. Sans `--out`, le rapport est écrit sur la sortie standard ;
+avec `--out`, le dossier est créé si besoin (chemin relatif à `backend/`). **`--fail-on-failure`** donne le
+code de sortie `1` si le test a échoué, pour faire échouer l'étape de la CI (`2` = erreur d'utilisation).
+
+| Dans le run | Dans le rapport JUnit |
+|---|---|
+| étape réussie | `<testcase>` (durée en secondes) |
+| étape en échec | `<failure type="E-ELM-001">` : phrase, code, attendu / trouvé / piste, détails techniques |
+| étape jamais exécutée (une étape précédente a échoué) | `<skipped>` |
+| erreur qui interrompt le run (site injoignable, page vide, IA sans étape) | un `<testcase>` « Préparation du test » en `<error>` avec le code (`E-NAV-001`, `E-CRW-001`...) : une CI voit un échec, pas un rapport vide |
+| étape instable (réussie à la relance) | reste un succès ; l'instabilité est écrite dans `system-out` et dans la propriété `flakySteps` de la suite |
+
+Le XML est vérifié par un vrai parseur sur du texte hostile (balises, `&`, guillemets, caractères de
+contrôle, retours à la ligne). L'adresse, le navigateur, la confiance, le ticket et les avertissements du
+scénario sont des `<property>` de la suite.
+
+**Exemple de workflow GitHub Actions** (non fourni dans le dépôt : il demande un secret `GROQ_API_KEY` et une
+URL à tester ; vérifie la version actuelle de l'action sur sa page du Marketplace) :
+
+```yaml
+name: QA-UI Agent
+on: workflow_dispatch
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write        # nécessaire pour publier le rapport comme « check »
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test-run -- "https://exemple.tn/login" "Vérifier que le message d'erreur s'affiche"
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      - run: npm run export-report -- latest --out reports/qa-ui-agent.xml --fail-on-failure
+        if: always()
+      - uses: mikepenz/action-junit-report@v6
+        if: always()
+        with:
+          report_paths: backend/reports/qa-ui-agent.xml
+```
 
 ## Relance automatique et tests instables
 
