@@ -1,8 +1,71 @@
 import { launchBrowser, resolveBrowserEngine } from "./browser.js";
 import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
-import { StepError, classifyError, enrichFailure } from "./step-errors.js";
+import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { mkdir } from "fs/promises";
+
+// Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
+// élément qui apparaît une demi-seconde trop tard font échouer un test qui passerait une seconde
+// plus tard. Une étape qui ne réussit qu'à la relance est signalée « instable » : le test passe, mais
+// il n'est pas fiable. Réglable via STEP_RETRIES (0 à 2, défaut 1) et STEP_RETRY_TIMEOUT_MS.
+const DEFAULT_STEP_RETRIES = 1;
+const MAX_STEP_RETRIES = 2;
+const DEFAULT_RETRY_TIMEOUT_MS = 3000;
+const DEFAULT_RETRY_DELAY_MS = 500;
+
+/** Lit STEP_RETRIES / STEP_RETRY_TIMEOUT_MS (valeurs invalides ignorées). Exporté pour les tests. */
+export function getRetryConfig(env = process.env) {
+  const retries = Number(env.STEP_RETRIES);
+  const timeout = Number(env.STEP_RETRY_TIMEOUT_MS);
+  return {
+    maxRetries:
+      env.STEP_RETRIES !== undefined && env.STEP_RETRIES !== "" && Number.isInteger(retries) && retries >= 0
+        ? Math.min(retries, MAX_STEP_RETRIES)
+        : DEFAULT_STEP_RETRIES,
+    retryTimeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_RETRY_TIMEOUT_MS,
+    retryDelayMs: DEFAULT_RETRY_DELAY_MS,
+  };
+}
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Exécute une étape, et la relance (au plus `maxRetries` fois) si elle échoue pour une raison
+ * qui vaut la peine d'être retentée (voir isRetryable). Les relances ont un délai plus court
+ * (`retryTimeoutMs`) que la première tentative : elles servent à rattraper un état passager,
+ * pas à attendre à nouveau aussi longtemps.
+ *
+ * Renvoie { attempts, error, firstError } : `error` est la StepError de la dernière tentative (null
+ * si l'étape a réussi) et `firstError` celle de la première (null si elle a réussi du premier coup).
+ * Exporté pour les tests.
+ */
+export async function executeStepWithRetry(page, baseUrl, step, timeouts, options = {}) {
+  const { maxRetries = 0, retryTimeoutMs = DEFAULT_RETRY_TIMEOUT_MS, retryDelayMs = DEFAULT_RETRY_DELAY_MS, sleep = defaultSleep } = options;
+  const retryTimeouts = { ...timeouts, stepTimeoutMs: Math.min(timeouts.stepTimeoutMs, retryTimeoutMs) };
+
+  let attempts = 0;
+  let firstError = null;
+  for (;;) {
+    attempts += 1;
+    try {
+      await executeStep(page, baseUrl, step, attempts === 1 ? timeouts : retryTimeouts);
+      return { attempts, error: null, firstError };
+    } catch (err) {
+      const error = classifyError(err, step);
+      firstError ??= error;
+      if (attempts > maxRetries || !isRetryable(error, step)) {
+        if (attempts > 1) {
+          // La phrase de l'erreur ne connaît que la dernière tentative (« après 3 s »), alors que la
+          // cible a été attendue bien plus longtemps : on donne l'attente totale et le nombre d'essais.
+          const totalSeconds = Math.round((timeouts.stepTimeoutMs + (attempts - 1) * retryTimeouts.stepTimeoutMs) / 1000);
+          error.message = error.message.replace(/(après|attendu) \d+ s/, `$1 ${totalSeconds} s en ${attempts} essais`);
+        }
+        return { attempts, error, firstError };
+      }
+      await sleep(retryDelayMs);
+    }
+  }
+}
 
 /**
  * Exécute réellement un scénario généré (voir planner.js) dans un vrai navigateur :
@@ -45,6 +108,7 @@ export async function runScenario(url, scenario, options = {}) {
   const browser = await launchBrowser(browserEngine, { headless });
   const results = [];
   let overallStatus = "passed";
+  const retryConfig = { ...getRetryConfig(), ...(options.stepRetries !== undefined ? { maxRetries: options.stepRetries } : {}) };
 
   try {
     const page = await browser.newPage();
@@ -55,16 +119,19 @@ export async function runScenario(url, scenario, options = {}) {
       const stepResult = newStepResult(index, step);
 
       const startedAt = Date.now();
-      try {
-        await executeStep(page, url, step, { stepTimeoutMs, navigationTimeoutMs });
-      } catch (err) {
-        // executeStep lève toujours une StepError (catégorie, attendu/trouvé/piste). On la complète
+      const outcome = await executeStepWithRetry(page, url, step, { stepTimeoutMs, navigationTimeoutMs }, retryConfig);
+      stepResult.attempts = outcome.attempts;
+      if (outcome.attempts > 1 && outcome.firstError) {
+        // Pourquoi la première tentative a échoué : c'est ce qui rend le test « instable ».
+        stepResult.firstFailure = { code: outcome.firstError.code, message: outcome.firstError.message };
+      }
+      if (outcome.error) {
+        // La dernière tentative est une StepError (catégorie, attendu/trouvé/piste). On la complète
         // avec ce qu'on voit sur la page, sans jamais laisser cette lecture faire échouer le run.
-        const failure = classifyError(err, step);
-        await enrichFailure(page, step, failure);
+        await enrichFailure(page, step, outcome.error);
         stepResult.status = "failed";
-        stepResult.error = failure.message;
-        stepResult.failure = failure.toFailure();
+        stepResult.error = outcome.error.message;
+        stepResult.failure = outcome.error.toFailure();
         overallStatus = "failed";
       }
       stepResult.durationMs = Date.now() - startedAt;
@@ -122,6 +189,8 @@ export function newStepResult(index, step) {
     status: "passed",
     error: null,
     failure: null,
+    // Nombre de tentatives (1 = réussie, ou échouée, du premier coup). Au-delà, voir executeStepWithRetry.
+    attempts: 1,
     screenshot: null,
     durationMs: 0,
   };

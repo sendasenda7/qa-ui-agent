@@ -7,6 +7,7 @@ import PhaseTimeline from "../components/PhaseTimeline.jsx";
 import BrowserFrame from "../components/BrowserFrame.jsx";
 import RunStepList from "../components/RunStepList.jsx";
 import RunError from "../components/RunError.jsx";
+import FlakyNotice from "../components/FlakyNotice.jsx";
 import { useRunPolling } from "../hooks/useRunPolling.js";
 import { useNow } from "../hooks/useNow.js";
 import { formatClock } from "../lib/format.js";
@@ -122,6 +123,7 @@ export default function LiveRunDetail() {
 
       <PhaseTimeline run={runResult} options={data.options} />
 
+      <FlakyNotice runResult={runResult} />
       <RunError runResult={runResult} />
 
       {showBrowser && (

@@ -300,6 +300,41 @@ export function classifyRunError(err, phase) {
   });
 }
 
+/**
+ * Un échec vaut-il la peine d'être retenté ? Oui seulement quand la relance est SANS RISQUE et peut
+ * changer le résultat :
+ *  - la cible n'était pas encore là / visible / active : la page était peut-être en train de changer ;
+ *  - une vérification (texte, adresse) a échoué : le contenu s'affichait peut-être à l'instant ;
+ *  - une navigation a expiré ou la connexion a sauté.
+ * Jamais pour une erreur déterministe (étape invalide, sélecteur inventé ou ambigu, DNS, certificat),
+ * ni pour un clic ou un retour arrière qui a pu s'exécuter avant de planter : le refaire pourrait
+ * agir deux fois (ajouter deux fois au panier, reculer de deux pages).
+ * Exporté pour les tests.
+ */
+export function isRetryable(failure, step) {
+  const category = failure?.category;
+  const type = step?.type;
+  const beforeAction = ["ELEMENT_NOT_FOUND", "ELEMENT_NOT_VISIBLE", "ELEMENT_OBSCURED", "ELEMENT_DISABLED"];
+
+  if (type === "click") return beforeAction.includes(category);
+  if (type === "fill" || type === "select") return beforeAction.includes(category) || category === "TIMEOUT";
+  if (type === "assert_visible" || type === "assert_text" || type === "assert_enabled" || type === "assert_url") {
+    return beforeAction.includes(category) || ["TEXT_MISMATCH", "URL_MISMATCH", "TIMEOUT"].includes(category);
+  }
+  if (type === "navigate") {
+    if (category === "TIMEOUT") return true;
+    if (category !== "NAVIGATION_ERROR") return false;
+    // Nom de domaine inconnu ou certificat invalide : ça ne s'arrangera pas en 500 ms.
+    return !/ERR_NAME_NOT_RESOLVED|ERR_CERT|certificat/i.test(`${failure.found ?? ""} ${failure.technical ?? ""}`);
+  }
+  return false; // go_back et types inconnus : jamais
+}
+
+/** Nombre d'étapes réussies seulement après une relance (le signe d'un test instable). */
+export function countFlakySteps(results) {
+  return (Array.isArray(results) ? results : []).filter((r) => r?.status === "passed" && r.attempts > 1).length;
+}
+
 /** Exécute `promise` avec une limite de temps, sans laisser de timer en suspens. */
 async function withTimeout(promise, ms) {
   let timer;
@@ -361,6 +396,15 @@ export async function collectPageSnapshot(page, { timeoutMs = 2000 } = {}) {
   }
 }
 
+/** Le navigateur est-il encore sur la page blanche de départ ? (jamais d'exception) */
+function isBlankPage(page) {
+  try {
+    return typeof page?.url === "function" && page.url() === "about:blank";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Complète une StepError avec ce qu'on voit réellement sur la page : « Textes visibles sur la
  * page : … » et, pour une vérification, les boutons disponibles (« il manque peut-être un clic sur
@@ -370,6 +414,14 @@ export async function collectPageSnapshot(page, { timeoutMs = 2000 } = {}) {
 export async function enrichFailure(page, step, failure) {
   const enrichable = ["ELEMENT_NOT_FOUND", "ELEMENT_NOT_VISIBLE", "TEXT_MISMATCH"];
   if (!(failure instanceof StepError) || !enrichable.includes(failure.category)) return failure;
+
+  // Page blanche : le scénario n'a jamais ouvert la page. Le dire clairement, plutôt que de laisser
+  // croire que l'appli n'a « pas fini de s'afficher ».
+  if (isBlankPage(page)) {
+    failure.found = "Aucune page ouverte (le navigateur est resté sur une page blanche)";
+    failure.hint = "Le scénario n'ouvre jamais la page : il manque une étape « navigate » au début. Régénère le scénario.";
+    return failure;
+  }
 
   const snapshot = await collectPageSnapshot(page);
   if (!snapshot) return failure;

@@ -188,3 +188,36 @@ test("les chemins du serveur et les clés d'API ne finissent jamais dans le run 
   assert.match(runResult.error, /\[clé masquée\].*\[chemin masqué\]/);
   assert.match(runResult.failure.technical, /Call log/);
 });
+
+test("étape réussie seulement à la relance : le run reste réussi mais est compté comme instable", async () => {
+  const run = async (url, scenario, { runId, onProgress }) => {
+    const results = [
+      { index: 0, type: "navigate", description: "Ouvrir", status: "passed", attempts: 1, screenshot: null, durationMs: 1 },
+      { index: 1, type: "assert_text", description: "Texte", status: "passed", attempts: 2, screenshot: null, durationMs: 4000 },
+    ];
+    for (const result of results) await onProgress({ type: "step_end", index: result.index, result });
+    return { runId, url, status: "passed", stepsTotal: 2, stepsRun: 2, stepsPassed: 2, results };
+  };
+  const plan = async () => ({
+    ticketSummary: "s",
+    warnings: [],
+    steps: [
+      { type: "navigate", selector: null, value: null, description: "Ouvrir", selectorValid: true },
+      { type: "assert_text", selector: "#t", value: "x", description: "Texte", selectorValid: true },
+    ],
+  });
+  const { runId, done } = await startRun(baseInput, { crawl: async () => goodCrawl, plan, run });
+  await done;
+
+  const { runResult } = await readRun(runId);
+  assert.equal(runResult.status, "passed");
+  assert.equal(runResult.flakySteps, 1);
+  assert.equal(runResult.results[1].attempts, 2);
+});
+
+test("run sans relance : flakySteps vaut 0", async () => {
+  const { runId, done } = await startRun(baseInput, { crawl: async () => goodCrawl, plan: okPlan, run: okRun });
+  await done;
+  const { runResult } = await readRun(runId);
+  assert.equal(runResult.flakySteps, 0);
+});

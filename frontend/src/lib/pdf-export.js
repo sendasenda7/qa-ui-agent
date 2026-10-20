@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { screenshotUrl } from "./api.js";
+import { ordinalFr } from "./attempts.js";
 
 const MARGIN = 15;
 const PAGE_WIDTH = 210; // A4 en mm
@@ -62,7 +63,18 @@ export async function exportRunReportToPdf({ scenario, runResult, ticketUrl }) {
   );
   y += 5;
   doc.text(`Étapes : ${runResult.stepsPassed}/${runResult.stepsTotal} réussies`, MARGIN, y);
-  y += 8;
+  y += runResult.flakySteps > 0 ? 5 : 8;
+  if (runResult.flakySteps > 0) {
+    // Run réussi mais pas du premier coup : on le dit en tête du rapport.
+    doc.setTextColor(180, 110, 0);
+    doc.text(
+      `Test instable : ${runResult.flakySteps} étape(s) réussie(s) seulement à la relance.`,
+      MARGIN,
+      y
+    );
+    doc.setTextColor(0, 0, 0);
+    y += 8;
+  }
 
   // Résumé du ticket + confiance
   doc.setFont(undefined, "bold");
@@ -110,7 +122,13 @@ export async function exportRunReportToPdf({ scenario, runResult, ticketUrl }) {
 
   for (const step of runResult.results) {
     const lines = doc.splitTextToSize(
-      `${step.index + 1}. [${STATUS_LABELS[step.status] ?? step.status}] ${step.description}`,
+      `${step.index + 1}. [${STATUS_LABELS[step.status] ?? step.status}] ${step.description}${
+        step.attempts > 1
+          ? step.status === "passed"
+            ? ` (instable : réussi au ${ordinalFr(step.attempts)} essai)`
+            : ` (échec après ${step.attempts} essais)`
+          : ""
+      }`,
       CONTENT_WIDTH
     );
     ensureSpace(lines.length * 5 + (step.error ? 5 : 0));
