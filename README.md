@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
 │   │   ├── report-export.js     # Export d'un run en JUnit XML et en JSON (fonctions pures)
 │   │   ├── report-cli.js        # Logique de la commande export-report (testée)
 │   │   ├── export-report.js     # Point d'entrée : npm run export-report
@@ -336,6 +337,21 @@ n'aurait aucun élément à utiliser) et la phase « Exploration » apparaît en
 Une page qui n'a que du texte (sans champ ni bouton) reste testable avec `assert_text`. Les chemins du
 serveur et les clés d'API sont masqués dans tous les messages enregistrés.
 
+## Exploration après un clic
+
+Le crawl normal ne voit que la page affichée à l'ouverture. Quand le scénario de l'IA commence par des
+clics (choisir un profil, puis « Continuer »), le programme refait ces clics dans un navigateur, lit la
+page atteinte (champs, boutons, textes) puis redemande un scénario à l'IA en lui donnant ces éléments en plus.
+Les étapes sur le formulaire de la 2ᵉ page sont alors validées comme les autres : un sélecteur inventé
+reste refusé.
+
+- Seuls des **clics** sont faits pendant l'exploration (jamais de saisie ni d'envoi), 3 au plus, tant que le
+  scénario ne contient pas encore de saisie.
+- Si rien de nouveau n'apparaît, l'IA n'est pas rappelée. Si l'exploration échoue, le run continue avec
+  le premier scénario et un avertissement.
+- Le rapport indique la page explorée : « Page explorée après « ... » puis « ... » : N élément(s) en plus ».
+- Un coût : un 2ᵉ appel à l'IA (et un 2ᵉ chargement de la page) quand l'exploration trouve du nouveau.
+
 ## Configuration (`backend/.env`)
 
 Copie `.env.example` en `.env`. Variables obligatoires : `GROQ_API_KEY`, `AUTH_PASSWORD`, `JWT_SECRET`
@@ -392,5 +408,5 @@ npm run dev
 
 - Capture prise au moment de l'échec avec l'élément concerné encadré
 - Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
-- Support multi-page dans un scénario (naviguer vers une 2ᵉ URL en cours de route)
+- Exploration après une saisie (aujourd'hui seuls les clics sont rejoués pendant l'exploration)
 - Historique du score de confiance dans le temps, par ticket

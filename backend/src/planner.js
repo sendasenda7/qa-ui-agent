@@ -161,7 +161,36 @@ PAGE ANALYSÉE : ${crawlResult.url}
 ${JSON.stringify(simplifiedElements, null, 2)}
 
 TEXTES VISIBLES (pour assert_visible / assert_text) :
-${JSON.stringify(simplifiedTexts, null, 2)}`;
+${JSON.stringify(simplifiedTexts, null, 2)}${buildNextPageSection(crawlResult.nextPage)}`;
+}
+
+/**
+ * Section du prompt décrivant la page atteinte après des clics (exploration, voir exploration.js).
+ * Ces éléments n'existent PAS au chargement : l'IA ne doit s'en servir qu'après les clics indiqués.
+ */
+function buildNextPageSection(nextPage) {
+  if (!nextPage) return "";
+  const elements = nextPage.elements.map((el) => ({
+    selector: el.selector,
+    tag: el.tag,
+    accessibleName: el.accessibleName,
+    type: el.type,
+    detectedBy: el.detectedBy,
+    disabledLooking: el.disabledLooking,
+  }));
+  const texts = nextPage.textElements.map((t) => ({ selector: t.selector, kind: t.kind, text: t.text }));
+  const clicks = nextPage.via.map((label) => `« ${label} »`).join(" puis ");
+  return `
+
+PAGE ATTEINTE APRÈS LES CLICS ${clicks}${nextPage.url ? ` (adresse : ${nextPage.url})` : ""} :
+ces éléments n'existent PAS à l'ouverture de la page. N'utilise un sélecteur de cette liste que dans une étape
+placée APRÈS ces clics (les étapes "click" correspondantes doivent donc apparaître avant).
+
+NOUVEAUX ÉLÉMENTS INTERACTIFS (utilisables pour click/fill/select après ces clics) :
+${JSON.stringify(elements, null, 2)}
+
+NOUVEAUX TEXTES VISIBLES (pour assert_visible / assert_text après ces clics) :
+${JSON.stringify(texts, null, 2)}`;
 }
 
 /**
@@ -401,14 +430,18 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
  * message moins parlant pour l'utilisateur.
  */
 export function validateScenario(scenario, crawlResult) {
+  // Éléments et textes de la page atteinte après des clics (voir exploration.js), s'il y en a.
+  const nextPage = crawlResult.nextPage;
+  const allElements = [...crawlResult.elements, ...(nextPage?.elements || [])];
   const knownSelectors = new Set([
-    ...crawlResult.elements.map((el) => el.selector),
+    ...allElements.map((el) => el.selector),
     ...(crawlResult.textElements || []).map((t) => t.selector),
+    ...(nextPage?.textElements || []).map((t) => t.selector),
   ]);
   // Sélecteur de secours éventuel de chaque élément (voir crawler.js) : copié dans l'étape pour que
   // le runner puisse s'en servir sans avoir besoin du crawl.
   const fallbackBySelector = new Map(
-    crawlResult.elements.filter((el) => el.fallbackSelector).map((el) => [el.selector, el.fallbackSelector])
+    allElements.filter((el) => el.fallbackSelector).map((el) => [el.selector, el.fallbackSelector])
   );
   const validationWarnings = [...(scenario.warnings || [])];
 

@@ -221,6 +221,12 @@ export default function ReportDetail() {
             Voir le ticket
           </a>
         )}
+        {runResult.crawl?.nextPage && (
+          <p className="text-xs text-text-faint">
+            Page explorée après « {runResult.crawl.nextPage.via.join(" » puis « ")} » :{" "}
+            {runResult.crawl.nextPage.elementCount} élément(s) et {runResult.crawl.nextPage.textCount} texte(s) en plus.
+          </p>
+        )}
         {hasWarnings && (
           <ul className="flex flex-col gap-1 mt-1">
             {scenario.warnings.map((w, i) => (

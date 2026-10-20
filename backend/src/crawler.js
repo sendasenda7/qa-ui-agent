@@ -1,5 +1,6 @@
 import { launchBrowser } from "./browser.js";
-import { gotoAndSettle } from "./page-utils.js";
+import { MAX_EXPLORE_CLICKS } from "./exploration.js";
+import { gotoAndSettle, settlePage, waitForRendered, redactUrl } from "./page-utils.js";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
@@ -411,6 +412,67 @@ export async function resolveTextSelectors(page, items) {
   return resolved;
 }
 
+/** Liste les éléments interactifs et les textes visibles de l'état ACTUEL de la page. */
+async function extractPageState(page) {
+  const elements = await page.evaluate(buildSelectorInBrowser);
+  await upgradeToSemanticSelectors(page, elements);
+  const textElements = await resolveTextSelectors(page, await page.evaluate(collectTextInBrowser));
+  return { elements, textElements };
+}
+
+/**
+ * Explore la page ATTEINTE APRÈS des clics. Le crawl normal ne voit que ce qui est affiché à
+ * l'ouverture : sur une appli où l'on choisit d'abord un profil puis « Continuer », le formulaire
+ * n'existe pas encore et l'IA ne pouvait pas écrire d'étapes dessus.
+ *
+ * `clicks` = [{ selector, fallbackSelector?, description? }] dans l'ordre. L'exploration s'arrête
+ * proprement (sans erreur) au premier clic impossible : elle renvoie alors ce qu'elle a pu atteindre.
+ * Elle ne remplit aucun champ et ne soumet rien : seuls des clics sont faits.
+ *
+ * Renvoie { via, url, title, elements, textElements, clicksDone } ; `via` = descriptions des clics faits.
+ */
+export async function crawlAfterClicks(url, clicks, options = {}) {
+  const { navigationTimeoutMs = 30000, browserEngine, clickTimeoutMs = 5000 } = options;
+  const browser = await launchBrowser(browserEngine);
+  try {
+    const page = await browser.newPage();
+    await gotoAndSettle(page, url, { timeout: navigationTimeoutMs });
+
+    const via = [];
+    for (const click of clicks.slice(0, MAX_EXPLORE_CLICKS)) {
+      let clicked = false;
+      for (const selector of [click.selector, click.fallbackSelector]) {
+        if (!selector) continue;
+        try {
+          const locator = page.locator(selector).first();
+          if ((await locator.count()) === 0) continue;
+          await locator.click({ timeout: clickTimeoutMs });
+          clicked = true;
+          break;
+        } catch {
+          // sélecteur refusé ou clic impossible : on essaie le sélecteur de secours
+        }
+      }
+      if (!clicked) break;
+      via.push(click.description || click.selector);
+      await settlePage(page, 2000);
+      await waitForRendered(page, 4000);
+    }
+
+    const { elements, textElements } = via.length > 0 ? await extractPageState(page) : { elements: [], textElements: [] };
+    return {
+      via,
+      url: redactUrl(page.url()),
+      title: await page.title().catch(() => ""),
+      elements,
+      textElements,
+      clicksDone: via.length,
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
 /**
  * Crawle une URL et retourne la liste des éléments interactifs détectés,
  * avec le sélecteur le plus stable trouvé pour chacun.
@@ -442,9 +504,7 @@ export async function crawlPage(url, options = {}) {
         // Pas grave si rien n'apparaît : on continue quand même avec ce qui est déjà là.
       });
 
-    const elements = await page.evaluate(buildSelectorInBrowser);
-    await upgradeToSemanticSelectors(page, elements);
-    const textElements = await resolveTextSelectors(page, await page.evaluate(collectTextInBrowser));
+    const { elements, textElements } = await extractPageState(page);
 
     await mkdir("debug-screenshots", { recursive: true });
     const screenshotPath = `debug-screenshots/${Date.now()}.png`;
