@@ -148,3 +148,39 @@ export function screenshotUrl(relativePath) {
   const cleaned = relativePath.replace(/^run-screenshots\//, "screenshots/");
   return `${API_BASE_URL}/${cleaned}?token=${encodeURIComponent(token)}`;
 }
+
+const EXPORT_EXTENSIONS = { junit: "xml", json: "json" };
+
+/**
+ * Télécharge le rapport d'un run terminé : "junit" (XML, pour une CI) ou "json".
+ * La route exige le token dans un header : on ne peut donc pas utiliser un simple lien <a href>,
+ * on récupère le fichier avec fetch puis on le fait télécharger par le navigateur.
+ */
+export async function downloadRunExport(id, format) {
+  const extension = EXPORT_EXTENSIONS[format];
+  if (!extension) throw new Error(`Format d'export inconnu : ${format}`);
+
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(id)}/export?format=${format}`, { headers });
+
+  if (response.status === 401) {
+    notifyUnauthorized();
+    throw new Error("Authentification requise");
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || `Erreur API (${response.status})`);
+  }
+
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = `qa-ui-agent-run-${id}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+}

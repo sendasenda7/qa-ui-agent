@@ -16,6 +16,7 @@ import {
   rateLimitLogin,
 } from "./auth.js";
 import { HttpError } from "./http-error.js";
+import { EXPORT_FORMATS } from "./report-export.js";
 import { assertSafeTargetUrl, isHttpUrl } from "./url-guard.js";
 import { isSupportedBrowserEngine, SUPPORTED_BROWSER_ENGINES } from "./browser.js";
 
@@ -281,6 +282,29 @@ export function createApp({ env = process.env } = {}) {
       const content = await readRun(req.params.id);
       if (!content) throw new HttpError(404, "Run introuvable");
       res.json(content);
+    })
+  );
+
+  // Export d'un run terminé pour une CI ou un outil externe : ?format=junit (XML) ou ?format=json.
+  // Téléchargé comme un fichier (Content-Disposition). Un run encore en cours n'a pas de rapport final.
+  app.get(
+    "/api/runs/:id/export",
+    asyncRoute(async (req, res) => {
+      const format = typeof req.query.format === "string" ? req.query.format : "junit";
+      const exporter = Object.hasOwn(EXPORT_FORMATS, format) ? EXPORT_FORMATS[format] : null;
+      if (!exporter) {
+        throw new HttpError(400, `format inconnu : choisis ${Object.keys(EXPORT_FORMATS).join(" ou ")}`);
+      }
+
+      const content = await readRun(req.params.id);
+      if (!content) throw new HttpError(404, "Run introuvable");
+      if (content.runResult?.status === "running") {
+        throw new HttpError(409, "Run encore en cours : exporte-le une fois terminé");
+      }
+
+      res.setHeader("Content-Type", exporter.contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="qa-ui-agent-run-${req.params.id}.${exporter.extension}"`);
+      res.send(exporter.build(content));
     })
   );
 

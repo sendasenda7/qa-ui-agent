@@ -155,3 +155,72 @@ test("browserEngine inconnu : 400 sur toutes les routes qui lancent un navigateu
     assert.match((await res.json()).error, /browserEngine invalide.*chromium, firefox, webkit/);
   }
 });
+
+const exportableRun = (runId, status = "failed") => ({
+  ticketText: "Vérifier le message",
+  scenario: {
+    ticketSummary: "Vérifier le message",
+    confidence: 85,
+    warnings: [],
+    steps: [{ type: "navigate", description: "Ouvrir la page" }, { type: "assert_text", selector: "#m", description: "Texte" }],
+  },
+  runResult: {
+    runId,
+    url: "https://exemple.test/",
+    browserEngine: "chromium",
+    status,
+    startedAt: new Date(Number(runId)).toISOString(),
+    finishedAt: status === "running" ? null : new Date(Number(runId) + 5000).toISOString(),
+    results: [
+      { index: 0, type: "navigate", description: "Ouvrir la page", status: "passed", attempts: 1, durationMs: 1000 },
+      { index: 1, type: "assert_text", selector: "#m", description: "Texte", status: "failed", attempts: 2, durationMs: 4000, error: "Texte attendu introuvable", failure: { code: "E-ELM-001", label: "Élément introuvable" } },
+    ],
+  },
+});
+
+test("export : JUnit XML par défaut, en téléchargement, avec le code stable de l'échec", async () => {
+  await saveRun("7001", exportableRun("7001"));
+
+  const res = await fetch(`${base}/api/runs/7001/export`, authed());
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /^application\/xml/);
+  assert.equal(res.headers.get("content-disposition"), 'attachment; filename="qa-ui-agent-run-7001.xml"');
+
+  const xml = await res.text();
+  assert.match(xml, /^<\?xml version="1.0" encoding="UTF-8"\?>/);
+  assert.match(xml, /<testsuites [^>]*tests="2" failures="1"/);
+  assert.match(xml, /<failure message="Texte attendu introuvable" type="E-ELM-001">/);
+
+  const explicit = await fetch(`${base}/api/runs/7001/export?format=junit`, authed());
+  assert.equal(await explicit.text(), xml);
+});
+
+test("export : format JSON, valide et versionné", async () => {
+  await saveRun("7002", exportableRun("7002", "passed"));
+
+  const res = await fetch(`${base}/api/runs/7002/export?format=json`, authed());
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /^application\/json/);
+  assert.equal(res.headers.get("content-disposition"), 'attachment; filename="qa-ui-agent-run-7002.json"');
+
+  const report = JSON.parse(await res.text());
+  assert.equal(report.schemaVersion, 1);
+  assert.equal(report.run.id, "7002");
+  assert.equal(report.summary.total, 2);
+});
+
+test("export : erreurs claires (format inconnu, run inconnu, run en cours) et authentification exigée", async () => {
+  await saveRun("7003", exportableRun("7003", "running"));
+
+  assert.equal((await fetch(`${base}/api/runs/7001/export?format=pdf`, authed())).status, 400);
+  // Noms qui existent sur tout objet JavaScript : ne doivent jamais être pris pour un format.
+  for (const format of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+    assert.equal((await fetch(`${base}/api/runs/7001/export?format=${format}`, authed())).status, 400, format);
+  }
+  assert.equal((await fetch(`${base}/api/runs/99999/export`, authed())).status, 404);
+  assert.equal((await fetch(`${base}/api/runs/abc/export`, authed())).status, 404, "runId invalide");
+  assert.equal((await fetch(`${base}/api/runs/7003/export`, authed())).status, 409);
+
+  assert.equal((await fetch(`${base}/api/runs/7001/export`)).status, 401);
+  assert.equal((await fetch(`${base}/api/runs/7001/export?token=${token}`)).status, 401, "?token= refusé sur /api");
+});
