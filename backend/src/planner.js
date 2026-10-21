@@ -1,3 +1,4 @@
+import { listSecretNames, findPlaceholders } from "./secrets.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { isMeaningfulUrlFragment } from "./page-utils.js";
 
@@ -161,7 +162,24 @@ PAGE ANALYSÉE : ${crawlResult.url}
 ${JSON.stringify(simplifiedElements, null, 2)}
 
 TEXTES VISIBLES (pour assert_visible / assert_text) :
-${JSON.stringify(simplifiedTexts, null, 2)}${buildNextPageSection(crawlResult.nextPage)}`;
+${JSON.stringify(simplifiedTexts, null, 2)}${buildNextPageSection(crawlResult.nextPage)}${buildSecretsSection()}`;
+}
+
+/**
+ * Noms (jamais les valeurs) des variables secrètes du .env que l'IA peut citer, voir secrets.js.
+ * Vide si aucune n'est définie : le prompt reste alors identique à avant.
+ */
+function buildSecretsSection() {
+  const names = listSecretNames();
+  if (names.length === 0) return "";
+  return `
+
+VARIABLES SECRÈTES DISPONIBLES (tu ne connais JAMAIS leurs valeurs, seulement leurs noms) :
+${names.map((name) => `- ${name}`).join("\n")}
+Pour saisir l'une de ces valeurs (identifiant, email, mot de passe d'un compte de test), écris exactement
+{{NOM}} dans le champ "value" d'une étape "fill" (ex. "{{${names[0]}}}"). N'invente JAMAIS d'identifiant ni de mot de
+passe, et n'écris jamais de valeur réelle. Si le ticket demande de se connecter et qu'aucune variable ne convient,
+signale-le dans "warnings".`;
 }
 
 /**
@@ -507,6 +525,25 @@ export function validateScenario(scenario, crawlResult) {
       ...(fallbackSelector ? { fallbackSelector } : {}),
     };
   });
+
+  // Valeurs secrètes (voir secrets.js) : une variable inconnue échouerait à l'exécution (on prévient
+  // avant) ; un mot de passe saisi en clair serait enregistré dans le scénario, les rapports et les exports.
+  const knownSecrets = new Set(listSecretNames());
+  const typeBySelector = new Map(allElements.map((el) => [el.selector, el.type]));
+  for (const step of checkedSteps) {
+    const names = findPlaceholders(step.value);
+    const unknown = names.filter((name) => !knownSecrets.has(name));
+    if (unknown.length > 0) {
+      validationWarnings.push(
+        `Variable secrète absente du .env : ${unknown.join(", ")} (étape "${step.description}") — l'étape échouera tant qu'elle n'est pas définie.`
+      );
+    }
+    if (step.type === "fill" && names.length === 0 && typeBySelector.get(step.selector) === "password") {
+      validationWarnings.push(
+        `Mot de passe écrit en clair dans le scénario (étape "${step.description}") : utilise une variable QA_SECRET_... du .env.`
+      );
+    }
+  }
 
   // Garde-fou anti-faux-positif : un "assert_text" sans texte attendu passerait TOUJOURS
   // ("abc".includes("") vaut true) et afficherait un faux "réussi". On le retire.
