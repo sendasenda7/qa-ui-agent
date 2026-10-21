@@ -1,5 +1,5 @@
 import { crawlPage, crawlAfterClicks } from "./crawler.js";
-import { pickExplorationClicks, attachNextPage, summarizeNextPage } from "./exploration.js";
+import { pickExplorationClicks, attachNextPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
 import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
@@ -275,26 +275,37 @@ export async function startRun(
       if (explore && scenario.steps?.length > 0) {
         const clicks = pickExplorationClicks(scenario.steps);
         if (clicks.length > 0) {
+          let next = null;
+          let enriched = null;
+          let used = false;
+          let exploreError = null;
           try {
-            const next = await explore(url, clicks, { navigationTimeoutMs, browserEngine: engine });
-            const enriched = attachNextPage(crawlResult, next);
+            next = await explore(url, clicks, { navigationTimeoutMs, browserEngine: engine });
+            enriched = attachNextPage(crawlResult, next);
             if (enriched) {
               const second = await plan(ticketText, enriched, { deepReview });
               if (second.steps?.length > 0) {
                 scenario = second;
+                used = true;
                 runResult.crawl.nextPage = summarizeNextPage(enriched);
-                await saveRun(runId, state);
               }
             }
           } catch (exploreErr) {
+            exploreError = truncate(String(exploreErr.message).split("\n")[0], 160);
             scenario = {
               ...scenario,
               warnings: [
                 ...(scenario.warnings || []),
-                `Exploration après clic impossible (${truncate(String(exploreErr.message).split("\n")[0], 160)}) : le scénario n'utilise que la page d'ouverture.`,
+                `Exploration après clic impossible (${exploreError}) : le scénario n'utilise que la page d'ouverture.`,
               ],
             };
           }
+          runResult.crawl.exploration = summarizeExploration({ clicks, next, enriched, used, error: exploreError });
+          console.log(
+            `[run ${runId}] exploration après clic : ${runResult.crawl.exploration.clicksDone}/${clicks.length} clic(s), ` +
+              `${runResult.crawl.exploration.newElementCount} nouvel(s) élément(s), ${used ? "scénario régénéré" : "scénario inchangé"}`
+          );
+          await saveRun(runId, state);
         }
       }
 

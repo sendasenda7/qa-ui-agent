@@ -58,3 +58,21 @@ export function summarizeNextPage(crawl) {
     textCount: next.textElements.length,
   };
 }
+
+/**
+ * Bilan de l'exploration, stocké dans le run et affiché dans le rapport : sans lui, une exploration
+ * qui ne trouve rien (ou dont un clic échoue) ne laissait aucune trace et on ne pouvait pas savoir
+ * si elle avait eu lieu. `next` = résultat de crawlAfterClicks (ou null), `error` = message si elle a planté.
+ */
+export function summarizeExploration({ clicks, next = null, enriched = null, used = false, error = null }) {
+  return {
+    clicksPlanned: clicks.map((c) => c.description || c.selector),
+    clicksDone: next?.clicksDone ?? 0,
+    failedClick: next?.failedClick ?? null,
+    url: next?.url ?? null,
+    newElementCount: enriched?.nextPage.elements.length ?? 0,
+    newTextCount: enriched?.nextPage.textElements.length ?? 0,
+    usedForPlan: used,
+    error,
+  };
+}

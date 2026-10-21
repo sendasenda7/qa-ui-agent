@@ -167,3 +167,34 @@ test("exécuteur : un scénario sans clic n'explore pas, et sans `explore` injec
   await (await startRun(input, { crawl: async () => baseCrawl, plan, run: okRun })).done;
   assert.equal(plan.calls.length, 1);
 });
+
+// ---- bilan de l'exploration : toujours visible dans le run ----
+test("bilan : exploration utilisée, sans nouveauté, clic raté, erreur — chacun laisse une trace", async () => {
+  const run = (explore) => startRun(input, { crawl: async () => baseCrawl, plan: spyPlan([firstPlan, secondPlan]), run: okRun, explore });
+
+  let r = await run(async () => next);
+  await r.done;
+  let ex = (await readRun(r.runId)).runResult.crawl.exploration;
+  assert.equal(ex.usedForPlan, true);
+  assert.equal(ex.newElementCount, 1);
+  assert.deepEqual(ex.clicksPlanned, ["clic #assoc", "clic #cont"]);
+
+  r = await run(async () => ({ ...next, elements: [], textElements: [], clicksDone: 2 }));
+  await r.done;
+  ex = (await readRun(r.runId)).runResult.crawl.exploration;
+  assert.equal(ex.usedForPlan, false);
+  assert.equal(ex.clicksDone, 2);
+  assert.equal(ex.newElementCount, 0);
+
+  r = await run(async () => ({ via: ["clic #assoc"], clicksDone: 1, failedClick: { description: "clic #cont", selector: "#cont", reason: "élément introuvable sur la page" }, elements: [], textElements: [], url: "https://x.test/" }));
+  await r.done;
+  ex = (await readRun(r.runId)).runResult.crawl.exploration;
+  assert.equal(ex.clicksDone, 1);
+  assert.equal(ex.failedClick.description, "clic #cont");
+
+  r = await run(async () => { throw new Error("page.goto: Timeout\nCall log"); });
+  await r.done;
+  ex = (await readRun(r.runId)).runResult.crawl.exploration;
+  assert.equal(ex.error, "page.goto: Timeout");
+  assert.equal(ex.usedForPlan, false);
+});

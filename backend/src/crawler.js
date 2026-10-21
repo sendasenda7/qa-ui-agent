@@ -1,6 +1,6 @@
 import { launchBrowser } from "./browser.js";
 import { MAX_EXPLORE_CLICKS } from "./exploration.js";
-import { gotoAndSettle, settlePage, waitForRendered, redactUrl } from "./page-utils.js";
+import { gotoAndSettle, settlePage, waitForRendered, redactUrl, stripAnsi } from "./page-utils.js";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
 import { mkdir } from "fs/promises";
@@ -430,36 +430,49 @@ async function extractPageState(page) {
  * Elle ne remplit aucun champ et ne soumet rien : seuls des clics sont faits.
  *
  * Renvoie { via, url, title, elements, textElements, clicksDone } ; `via` = descriptions des clics faits.
+ * Option `screenshotPath` : enregistre une capture de la page atteinte (diagnostic).
  */
 export async function crawlAfterClicks(url, clicks, options = {}) {
-  const { navigationTimeoutMs = 30000, browserEngine, clickTimeoutMs = 5000 } = options;
+  const { navigationTimeoutMs = 30000, browserEngine, clickTimeoutMs = 8000, screenshotPath = null } = options;
   const browser = await launchBrowser(browserEngine);
   try {
     const page = await browser.newPage();
     await gotoAndSettle(page, url, { timeout: navigationTimeoutMs });
 
     const via = [];
+    let failedClick = null;
     for (const click of clicks.slice(0, MAX_EXPLORE_CLICKS)) {
       let clicked = false;
-      for (const selector of [click.selector, click.fallbackSelector]) {
+      let reason = "élément introuvable sur la page";
+      // Le clic ATTEND que l'élément apparaisse (comme le fait le run) : sur une appli Angular, le bouton
+      // peut s'afficher quelques secondes après le reste de la page. Le sélecteur de secours n'a
+      // droit qu'à une attente plus courte.
+      const attempts = [
+        [click.selector, clickTimeoutMs],
+        [click.fallbackSelector, Math.min(3000, clickTimeoutMs)],
+      ];
+      for (const [selector, timeout] of attempts) {
         if (!selector) continue;
         try {
-          const locator = page.locator(selector).first();
-          if ((await locator.count()) === 0) continue;
-          await locator.click({ timeout: clickTimeoutMs });
+          await page.locator(selector).first().click({ timeout });
           clicked = true;
           break;
-        } catch {
+        } catch (err) {
           // sélecteur refusé ou clic impossible : on essaie le sélecteur de secours
+          reason = stripAnsi(String(err.message)).split("\n")[0].slice(0, 160);
         }
       }
-      if (!clicked) break;
+      if (!clicked) {
+        failedClick = { description: click.description || click.selector, selector: click.selector, reason };
+        break;
+      }
       via.push(click.description || click.selector);
       await settlePage(page, 2000);
       await waitForRendered(page, 4000);
     }
 
     const { elements, textElements } = via.length > 0 ? await extractPageState(page) : { elements: [], textElements: [] };
+    if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
     return {
       via,
       url: redactUrl(page.url()),
@@ -467,6 +480,7 @@ export async function crawlAfterClicks(url, clicks, options = {}) {
       elements,
       textElements,
       clicksDone: via.length,
+      failedClick,
     };
   } finally {
     await browser.close();

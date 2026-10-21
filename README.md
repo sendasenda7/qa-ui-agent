@@ -17,6 +17,7 @@ qa-ui-agent/
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
+│   │   ├── diagnose-page.js     # Diagnostic : pourquoi une page s'ouvre lentement (requêtes bloquées)
 │   │   ├── report-export.js     # Export d'un run en JUnit XML et en JSON (fonctions pures)
 │   │   ├── report-cli.js        # Logique de la commande export-report (testée)
 │   │   ├── export-report.js     # Point d'entrée : npm run export-report
@@ -349,8 +350,32 @@ reste refusé.
   scénario ne contient pas encore de saisie.
 - Si rien de nouveau n'apparaît, l'IA n'est pas rappelée. Si l'exploration échoue, le run continue avec
   le premier scénario et un avertissement.
-- Le rapport indique la page explorée : « Page explorée après « ... » puis « ... » : N élément(s) en plus ».
+- Le rapport indique toujours le bilan : « Page explorée après « ... » puis « ... » : N élément(s) en plus », ou « rien de nouveau sur la page atteinte », ou « le clic « ... » n'a pas pu être fait (raison) ». Le terminal du serveur affiche aussi une ligne `exploration après clic : 2/2 clic(s)...` à chaque run.
 - Un coût : un 2ᵉ appel à l'IA (et un 2ᵉ chargement de la page) quand l'exploration trouve du nouveau.
+
+Pour voir ce que l'agent découvre après tes clics (diagnostic, sans IA ni run) :
+
+```
+cd backend
+npm run explore-clicks -- https://staging.helpify.tn/auth/login Je suis une Association puis Continuer
+```
+
+Les clics sont séparés par le mot « puis » (sous Windows, npm perd souvent les guillemets). La commande affiche les clics réussis, l'adresse atteinte, les nouveaux champs et textes, et enregistre une
+capture de la page atteinte dans `backend/debug-screenshots/`.
+
+## Une page qui s'ouvre trop lentement dans l'outil
+
+L'outil n'exige plus que la page ait fini de charger tous ses scripts : seule la réponse du serveur est
+attendue, puis l'outil attend « au mieux » (un script externe bloqué ne fait plus échouer le test). Si une
+page s'ouvre dans ton navigateur mais dépasse le délai dans l'outil :
+
+```
+cd backend
+npm run diagnose-page -- https://staging.helpify.tn/auth/login
+```
+
+La commande ouvre la page 25 s et affiche l'état du chargement, les requêtes restées sans réponse (souvent
+un script ou une police externe), les requêtes échouées et les erreurs de la console.
 
 ## Configuration (`backend/.env`)
 
