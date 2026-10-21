@@ -98,9 +98,28 @@ export async function waitForRendered(page, timeoutMs = getRenderTimeoutMs()) {
  * réseau de la personne) le retardait indéfiniment : `page.goto` échouait au bout de 30 ou 60 s alors
  * que le site répondait normalement. Un vrai problème (DNS, certificat, serveur muet) échoue toujours.
  */
-export async function gotoAndSettle(page, url, { timeout = 30000, settleTimeoutMs } = {}) {
-  await page.goto(url, { waitUntil: "commit", timeout });
+export async function gotoAndSettle(
+  page,
+  url,
+  { timeout = 30000, settleTimeoutMs, connectionRetries = 1, retryDelayMs = 1000 } = {},
+) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: "commit", timeout });
+      break;
+    } catch (error) {
+      // Coupure de connexion ponctuelle (réseau instable, serveur qui ne répond pas à ce moment) :
+      // on réessaie une fois avant d'échouer. Les autres erreurs (DNS, certificat...) échouent tout de suite.
+      if (attempt >= connectionRetries || !isTransientConnectionError(error)) throw error;
+      if (retryDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
   await settleAfterNavigation(page, settleTimeoutMs);
+}
+
+/** Erreurs réseau qui peuvent disparaître d'un essai à l'autre. */
+export function isTransientConnectionError(error) {
+  return /ERR_CONNECTION_TIMED_OUT|ERR_TIMED_OUT|ERR_NETWORK_CHANGED|ERR_CONNECTION_RESET/.test(String(error?.message ?? error ?? ""));
 }
 
 /** Même chose pour "page précédente". */

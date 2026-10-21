@@ -471,6 +471,9 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
   saisie ou une connexion, la page atteinte n'est pas explorée à l'avance : pour la vérifier, donne dans le ticket l'adresse
   (`assert_url`) ou un texte exact qui doit apparaître.
 - **Un test « réussi » ne prouve que ce qu'il vérifie.** Sans étape `assert_*`, le rapport l'avertit et plafonne la confiance à 30 %.
+- **Réseau instable.** Si la connexion au site expire (`ERR_CONNECTION_TIMED_OUT`), l'ouverture de la page est réessayée une fois ;
+  si elle échoue encore, le rapport l'indique clairement (« Connexion au site impossible », code `E-NAV-001`) au lieu d'une page vide.
+  Dans ce cas teste depuis un autre réseau (ex. partage de connexion du téléphone) pour savoir si le problème vient de ta connexion.
 - **Sélecteurs.** Un élément sans nom accessible, sans id ni attribut stable reçoit un sélecteur de position (fragile si la page change).
 - **Régression visuelle.** Elle compare des captures pixel à pixel : une date, un compteur de notifications ou une animation qui
   change donne un écart. Deux runs ne se comparent que s'ils ont le même ticket, la même URL et le même navigateur.
