@@ -90,6 +90,9 @@ test("classifyError : erreurs de navigation (DNS, connexion refusée, certificat
   assert.equal(nav("page.goto: net::ERR_NAME_NOT_RESOLVED at https://x.tn/").category, "NAVIGATION_ERROR");
   assert.match(nav("page.goto: net::ERR_NAME_NOT_RESOLVED at https://x.tn/").message, /Adresse introuvable/);
   assert.match(nav("page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:1/").message, /refusé ou coupé/);
+  const cut = nav("page.goto: net::ERR_CONNECTION_TIMED_OUT at https://x.tn/");
+  assert.equal(cut.category, "NAVIGATION_ERROR");
+  assert.match(cut.message, /Connexion au site impossible/);
   assert.match(nav("page.goto: net::ERR_CERT_DATE_INVALID at https://x.tn/").message, /certificat/i);
   const slow = nav("page.goto: Timeout 30000ms exceeded.");
   assert.equal(slow.category, "TIMEOUT");

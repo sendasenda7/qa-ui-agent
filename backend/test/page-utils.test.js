@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gotoAndSettle, goBackAndSettle, settlePage, stripAnsi } from "../src/page-utils.js";
+import { gotoAndSettle, isTransientConnectionError, goBackAndSettle, settlePage, stripAnsi } from "../src/page-utils.js";
 
 /** Fausse page : enregistre les appels ; `idleFails` simule un site qui n'est jamais "réseau inactif". */
 function fakePage({ gotoError = null, idleFails = false } = {}) {
@@ -67,4 +67,30 @@ test("un script de la page qui ne répond jamais ne bloque pas l'ouverture (seul
   await gotoAndSettle(page, "https://staging.exemple.tn/", { timeout: 30000, settleTimeoutMs: 10 });
   assert.equal(page.calls[0][2], "commit");
   assert.ok(page.calls.some((c) => c[0] === "wait" && c[1] === "domcontentloaded"), "il a quand même essayé de l'attendre");
+});
+
+test("une coupure de connexion ponctuelle est réessayée une fois", async () => {
+  let tries = 0;
+  const page = fakePage();
+  page.goto = async () => {
+    tries += 1;
+    if (tries === 1) throw new Error("page.goto: net::ERR_CONNECTION_TIMED_OUT at https://x.tn/");
+  };
+  await gotoAndSettle(page, "https://x.tn/", { settleTimeoutMs: 10, retryDelayMs: 0 });
+  assert.equal(tries, 2);
+});
+
+test("une coupure qui dure échoue après le nouvel essai, une erreur DNS tout de suite", async () => {
+  let tries = 0;
+  const timedOut = fakePage();
+  timedOut.goto = async () => { tries += 1; throw new Error("net::ERR_CONNECTION_TIMED_OUT"); };
+  await assert.rejects(gotoAndSettle(timedOut, "https://x.tn/", { retryDelayMs: 0 }), /ERR_CONNECTION_TIMED_OUT/);
+  assert.equal(tries, 2);
+
+  tries = 0;
+  const dns = fakePage();
+  dns.goto = async () => { tries += 1; throw new Error("net::ERR_NAME_NOT_RESOLVED"); };
+  await assert.rejects(gotoAndSettle(dns, "https://x.tn/", { retryDelayMs: 0 }), /ERR_NAME_NOT_RESOLVED/);
+  assert.equal(tries, 1);
+  assert.equal(isTransientConnectionError(new Error("net::ERR_CERT_DATE_INVALID")), false);
 });

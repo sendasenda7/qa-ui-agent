@@ -139,6 +139,14 @@ function classifyNavigationError(message, technical) {
       technical,
     });
   }
+  if (/ERR_CONNECTION_TIMED_OUT|ERR_TIMED_OUT|ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED/.test(message)) {
+    return new StepError("NAVIGATION_ERROR", "Connexion au site impossible (réseau ou serveur).", {
+      expected: "Une page qui se charge",
+      found: "Le serveur n'a pas répondu à temps (connexion expirée)",
+      hint: "Ce n'est pas un défaut de la page : la connexion n'a pas abouti. Vérifie que le site s'ouvre depuis ton navigateur, change de réseau (ex. partage de connexion du téléphone) ou réessaie plus tard.",
+      technical,
+    });
+  }
   if (/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_CLOSED/.test(message)) {
     return new StepError("NAVIGATION_ERROR", "Le serveur a refusé ou coupé la connexion.", {
       expected: "Une page qui se charge",
