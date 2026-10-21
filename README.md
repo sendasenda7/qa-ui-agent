@@ -18,6 +18,7 @@ qa-ui-agent/
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
 │   │   ├── diagnose-page.js     # Diagnostic : pourquoi une page s'ouvre lentement (requêtes bloquées)
+│   │   ├── secrets.js           # Variables secrètes QA_SECRET_* : résolution à l'exécution et masquage
 │   │   ├── report-export.js     # Export d'un run en JUnit XML et en JSON (fonctions pures)
 │   │   ├── report-cli.js        # Logique de la commande export-report (testée)
 │   │   ├── export-report.js     # Point d'entrée : npm run export-report
@@ -376,6 +377,36 @@ npm run diagnose-page -- https://staging.helpify.tn/auth/login
 
 La commande ouvre la page 25 s et affiche l'état du chargement, les requêtes restées sans réponse (souvent
 un script ou une police externe), les requêtes échouées et les erreurs de la console.
+
+## Se connecter avec un compte de test (variables secrètes)
+
+Pour tester les pages qui sont derrière une connexion, l'outil peut saisir les identifiants d'un **compte de
+test dédié à l'environnement de staging**, sans que l'IA ni les rapports ne les voient jamais.
+
+1. Dans `backend/.env`, ajoute des variables dont le nom commence par `QA_SECRET_` (exemple pour Helpify) :
+
+```
+QA_SECRET_ASSOCIATION=identifiant-de-l-association-de-test
+QA_SECRET_EMAIL=email-du-compte-de-test@exemple.tn
+QA_SECRET_PASSWORD=mot-de-passe-du-compte-de-test
+```
+
+2. Redémarre le serveur. L'IA reçoit seulement les **noms** de ces variables. Dans le ticket, écris simplement
+   « se connecter avec le compte de test » (jamais l'email ni le mot de passe).
+3. L'IA écrit dans les étapes `{{QA_SECRET_EMAIL}}` ; la vraie valeur n'est insérée qu'au moment de saisir dans
+   le navigateur.
+
+Ce que l'outil garantit :
+
+- les valeurs ne sont écrites ni dans le scénario enregistré, ni dans `runs/*.json`, ni dans les exports JUnit/JSON, ni
+  dans les messages d'erreur (toute valeur qui y apparaîtrait est remplacée par `***`) ;
+- seules les variables `QA_SECRET_*` sont lisibles : une étape ne peut pas lire `GROQ_API_KEY` ou `JWT_SECRET` ;
+- une variable absente du `.env` donne l'erreur lisible `E-SEC-001` (sans relance) et un avertissement à la génération ;
+- un mot de passe écrit en clair dans un scénario déclenche un avertissement.
+
+À savoir : les captures d'écran montrent ce qui est affiché. Le mot de passe y est masqué par le navigateur, mais
+pas l'email ni l'identifiant : utilise un compte de test, jamais un vrai compte. Ne mets jamais d'identifiants dans le
+texte d'un ticket : ils seraient enregistrés avec le run. Le fichier `.env` ne doit jamais être envoyé sur GitHub.
 
 ## Configuration (`backend/.env`)
 

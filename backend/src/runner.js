@@ -2,6 +2,7 @@ import { launchBrowser, resolveBrowserEngine } from "./browser.js";
 import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
 import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
+import { resolveSecrets, maskSecretsDeep } from "./secrets.js";
 import { mkdir } from "fs/promises";
 
 // Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
@@ -123,15 +124,16 @@ export async function runScenario(url, scenario, options = {}) {
       stepResult.attempts = outcome.attempts;
       if (outcome.attempts > 1 && outcome.firstError) {
         // Pourquoi la première tentative a échoué : c'est ce qui rend le test « instable ».
-        stepResult.firstFailure = { code: outcome.firstError.code, message: outcome.firstError.message };
+        stepResult.firstFailure = maskSecretsDeep({ code: outcome.firstError.code, message: outcome.firstError.message });
       }
       if (outcome.error) {
         // La dernière tentative est une StepError (catégorie, attendu/trouvé/piste). On la complète
         // avec ce qu'on voit sur la page, sans jamais laisser cette lecture faire échouer le run.
         await enrichFailure(page, step, outcome.error);
         stepResult.status = "failed";
-        stepResult.error = outcome.error.message;
-        stepResult.failure = outcome.error.toFailure();
+        // Une valeur secrète saisie ou attendue ne doit jamais être écrite dans le fichier du run.
+        stepResult.error = maskSecretsDeep(outcome.error.message);
+        stepResult.failure = maskSecretsDeep(outcome.error.toFailure());
         overallStatus = "failed";
       }
       stepResult.durationMs = Date.now() - startedAt;
@@ -263,6 +265,21 @@ async function performStep(page, baseUrl, step, timeouts) {
     }
   }
 
+  // Valeur de l'étape, avec les variables secrètes ({{QA_SECRET_...}}) remplacées par leur valeur du .env :
+  // c'est le seul endroit où elle existe, jamais enregistrée (voir secrets.js).
+  let value = step.value;
+  if (["fill", "select", "assert_text"].includes(step.type)) {
+    const resolved = resolveSecrets(step.value);
+    if (resolved.missing.length > 0) {
+      throw new StepError("SECRET_MISSING", `Variable secrète absente du .env : ${resolved.missing.join(", ")}`, {
+        expected: `${resolved.missing.join(", ")} défini(e) dans backend/.env`,
+        found: "Variable absente ou vide",
+        hint: "Ajoute la ligne dans backend/.env (ex. QA_SECRET_EMAIL=...), puis redémarre le serveur.",
+      });
+    }
+    value = resolved.value;
+  }
+
   // Les étapes qui agissent sur un élément passent toutes par ce locator.
   const locatorFor = () => resolveLocator(page, step, stepTimeoutMs);
 
@@ -293,11 +310,11 @@ async function performStep(page, baseUrl, step, timeouts) {
       return;
 
     case "fill":
-      await (await locatorFor()).fill(step.value ?? "", { timeout: stepTimeoutMs });
+      await (await locatorFor()).fill(value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "select":
-      await (await locatorFor()).selectOption(step.value ?? "", { timeout: stepTimeoutMs });
+      await (await locatorFor()).selectOption(value ?? "", { timeout: stepTimeoutMs });
       return;
 
     case "assert_visible":
@@ -327,7 +344,7 @@ async function performStep(page, baseUrl, step, timeouts) {
     case "assert_text": {
       const locator = await locatorFor();
       await locator.waitFor({ state: "visible", timeout: stepTimeoutMs });
-      const expectedText = (step.value ?? "").trim();
+      const expectedText = (value ?? "").trim();
       if (!expectedText) {
         // Défense en profondeur (planner.js retire déjà ces étapes) : "".includes() passe toujours.
         throw new StepError("INVALID_STEP", "assert_text sans texte attendu : l'assertion ne vérifierait rien.", {
@@ -341,7 +358,7 @@ async function performStep(page, baseUrl, step, timeouts) {
         const caseOnly = actualText.toLowerCase().includes(expectedText.toLowerCase());
         throw new StepError(
           "TEXT_MISMATCH",
-          `Texte attendu introuvable. Attendu (contient) : "${step.value}" — trouvé : "${actualText}"`,
+          `Texte attendu introuvable. Attendu (contient) : "${value}" — trouvé : "${actualText}"`,
           {
             expected: `Le texte contient « ${expectedText} »`,
             found: actualText ? `« ${actualText} »` : "L'élément est vide",

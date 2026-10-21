@@ -17,6 +17,7 @@
 export const ERROR_CODES = Object.freeze({
   SELECTOR_HALLUCINATED: "E-SEL-001",
   INVALID_STEP: "E-STP-001",
+  SECRET_MISSING: "E-SEC-001",
   ELEMENT_NOT_FOUND: "E-ELM-001",
   ELEMENT_NOT_VISIBLE: "E-ELM-002",
   ELEMENT_DISABLED: "E-ELM-003",
@@ -34,6 +35,7 @@ export const ERROR_CODES = Object.freeze({
 export const CATEGORY_LABELS = Object.freeze({
   SELECTOR_HALLUCINATED: "Sélecteur inventé par l'IA",
   INVALID_STEP: "Étape invalide",
+  SECRET_MISSING: "Variable secrète absente",
   ELEMENT_NOT_FOUND: "Élément introuvable",
   ELEMENT_NOT_VISIBLE: "Élément non visible",
   ELEMENT_DISABLED: "Élément désactivé",
