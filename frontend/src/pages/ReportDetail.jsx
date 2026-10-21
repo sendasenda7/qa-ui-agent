@@ -13,6 +13,22 @@ import { getRun, replayRun, saveRunNotes, screenshotUrl, downloadRunExport } fro
 import { formatDuration } from "../lib/format.js";
 import { browserEngineLabel } from "../lib/browser-engines.js";
 
+/** Bilan de l'exploration après clic : toujours visible, y compris quand elle n'a rien trouvé. */
+function ExplorationNote({ exploration }) {
+  const planned = exploration.clicksPlanned.map((c) => `« ${c} »`).join(" puis ");
+  let text;
+  if (exploration.usedForPlan) {
+    text = `Page explorée après ${planned} : ${exploration.newElementCount} élément(s) et ${exploration.newTextCount} texte(s) en plus.`;
+  } else if (exploration.error) {
+    text = `Exploration après ${planned} impossible : ${exploration.error}`;
+  } else if (exploration.failedClick) {
+    text = `Exploration arrêtée : le clic « ${exploration.failedClick.description} » n'a pas pu être fait (${exploration.failedClick.reason}).`;
+  } else {
+    text = `Exploration après ${planned} : rien de nouveau sur la page atteinte.`;
+  }
+  return <p className="text-xs text-text-faint">{text}</p>;
+}
+
 export default function ReportDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -221,6 +237,7 @@ export default function ReportDetail() {
             Voir le ticket
           </a>
         )}
+        {runResult.crawl?.exploration && <ExplorationNote exploration={runResult.crawl.exploration} />}
         {hasWarnings && (
           <ul className="flex flex-col gap-1 mt-1">
             {scenario.warnings.map((w, i) => (

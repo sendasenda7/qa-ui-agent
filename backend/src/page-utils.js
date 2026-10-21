@@ -90,18 +90,28 @@ export async function waitForRendered(page, timeoutMs = getRenderTimeoutMs()) {
 }
 
 /**
- * Charge une URL : seule l'arrivée du HTML (domcontentloaded) est exigée dans `timeout` ; la
- * stabilisation de la page est ensuite "au mieux" (voir settlePage). Un vrai problème (site
- * injoignable, DNS, certificat, serveur trop lent à répondre) échoue toujours, avec le timeout.
+ * Charge une URL : seule la RÉPONSE du serveur (événement "commit") est exigée dans `timeout`.
+ * La fin du chargement du HTML et de ses scripts, puis la stabilisation, sont ensuite "au mieux".
+ *
+ * Pourquoi pas "domcontentloaded" : cet événement attend aussi les scripts de la page. Un script
+ * externe qui ne répond pas (police, statistiques, chat, publicité bloqués ou lents depuis le
+ * réseau de la personne) le retardait indéfiniment : `page.goto` échouait au bout de 30 ou 60 s alors
+ * que le site répondait normalement. Un vrai problème (DNS, certificat, serveur muet) échoue toujours.
  */
 export async function gotoAndSettle(page, url, { timeout = 30000, settleTimeoutMs } = {}) {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
-  await settlePage(page, settleTimeoutMs);
+  await page.goto(url, { waitUntil: "commit", timeout });
+  await settleAfterNavigation(page, settleTimeoutMs);
 }
 
 /** Même chose pour "page précédente". */
 export async function goBackAndSettle(page, { timeout = 30000, settleTimeoutMs } = {}) {
-  await page.goBack({ waitUntil: "domcontentloaded", timeout });
+  await page.goBack({ waitUntil: "commit", timeout });
+  await settleAfterNavigation(page, settleTimeoutMs);
+}
+
+async function settleAfterNavigation(page, settleTimeoutMs = getSettleTimeoutMs()) {
+  // Sans jamais échouer : un script qui bloque ne doit pas faire échouer le test.
+  await page.waitForLoadState("domcontentloaded", { timeout: settleTimeoutMs }).catch(() => {});
   await settlePage(page, settleTimeoutMs);
 }
 

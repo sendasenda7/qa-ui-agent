@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "crawl": "node src/crawler.js",
+    "explore-clicks": "node src/explore-clicks.js",
+    "diagnose-page": "node src/diagnose-page.js",
     "plan": "node src/plan.js",
     "test-run": "node src/test-run.js",
     "compare": "node src/compare-runs.js",

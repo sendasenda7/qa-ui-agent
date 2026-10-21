@@ -22,7 +22,7 @@ function fakePage({ gotoError = null, idleFails = false } = {}) {
 test("un site qui n'atteint jamais « réseau inactif » ne fait PAS échouer la navigation", async () => {
   const page = fakePage({ idleFails: true });
   await gotoAndSettle(page, "https://staging.exemple.tn/", { timeout: 30000, settleTimeoutMs: 10 });
-  assert.deepEqual(page.calls[0], ["goto", "https://staging.exemple.tn/", "domcontentloaded", 30000]);
+  assert.deepEqual(page.calls[0], ["goto", "https://staging.exemple.tn/", "commit", 30000]);
   assert.ok(page.calls.some((c) => c[0] === "wait" && c[1] === "networkidle"), "il a quand même essayé d'attendre");
 });
 
@@ -34,7 +34,7 @@ test("un vrai échec de chargement (site injoignable, timeout) reste une erreur"
 test("go_back suit la même logique", async () => {
   const page = fakePage({ idleFails: true });
   await goBackAndSettle(page, { timeout: 4000, settleTimeoutMs: 10 });
-  assert.deepEqual(page.calls[0], ["goBack", "domcontentloaded", 4000]);
+  assert.deepEqual(page.calls[0], ["goBack", "commit", 4000]);
 });
 
 test("NETWORK_SETTLE_TIMEOUT_MS règle l'attente (0 = pas d'attente)", async () => {
@@ -56,4 +56,15 @@ test("stripAnsi retire les codes couleur de Playwright", () => {
   assert.equal(stripAnsi(raw).includes("\u001b"), false);
   assert.match(stripAnsi(raw), /navigating to "https:\/\/x\.tn\/"/);
   assert.equal(stripAnsi(null), "");
+});
+
+test("un script de la page qui ne répond jamais ne bloque pas l'ouverture (seul le « commit » est exigé)", async () => {
+  const page = fakePage();
+  page.waitForLoadState = async (state) => {
+    page.calls.push(["wait", state]);
+    throw new Error(`Timeout : ${state} jamais atteint`); // domcontentloaded, load et networkidle bloqués
+  };
+  await gotoAndSettle(page, "https://staging.exemple.tn/", { timeout: 30000, settleTimeoutMs: 10 });
+  assert.equal(page.calls[0][2], "commit");
+  assert.ok(page.calls.some((c) => c[0] === "wait" && c[1] === "domcontentloaded"), "il a quand même essayé de l'attendre");
 });

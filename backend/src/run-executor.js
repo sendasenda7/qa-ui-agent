@@ -1,4 +1,5 @@
-import { crawlPage } from "./crawler.js";
+import { crawlPage, crawlAfterClicks } from "./crawler.js";
+import { pickExplorationClicks, attachNextPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
 import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
@@ -203,6 +204,9 @@ export async function startRun(
   reservation = null
 ) {
   const { crawl = crawlPage, plan = generateScenario, run = runScenario } = deps;
+  // Exploration après clic : active par défaut avec le vrai crawler ; avec un faux crawl injecté
+  // (tests), elle n'est active que si un faux `explore` est aussi fourni (pas de navigateur réel).
+  const explore = deps.explore ?? (crawl === crawlPage ? crawlAfterClicks : null);
   // Lève une erreur AVANT de créer le run si le moteur est inconnu.
   const engine = resolveBrowserEngine(browserEngine);
 
@@ -263,7 +267,48 @@ export async function startRun(
       runResult.phase = "planning";
       await saveRun(runId, state);
 
-      const scenario = await plan(ticketText, crawlResult, { deepReview });
+      let scenario = await plan(ticketText, crawlResult, { deepReview });
+
+      // Exploration après clic : si le scénario commence par des clics, on va voir la page atteinte
+      // et on redemande un scénario avec ses éléments (formulaire d'une 2e étape, par exemple).
+      // Tout échec ici est sans gravité : on garde le premier scénario, avec un avertissement.
+      if (explore && scenario.steps?.length > 0) {
+        const clicks = pickExplorationClicks(scenario.steps);
+        if (clicks.length > 0) {
+          let next = null;
+          let enriched = null;
+          let used = false;
+          let exploreError = null;
+          try {
+            next = await explore(url, clicks, { navigationTimeoutMs, browserEngine: engine });
+            enriched = attachNextPage(crawlResult, next);
+            if (enriched) {
+              const second = await plan(ticketText, enriched, { deepReview });
+              if (second.steps?.length > 0) {
+                scenario = second;
+                used = true;
+                runResult.crawl.nextPage = summarizeNextPage(enriched);
+              }
+            }
+          } catch (exploreErr) {
+            exploreError = truncate(String(exploreErr.message).split("\n")[0], 160);
+            scenario = {
+              ...scenario,
+              warnings: [
+                ...(scenario.warnings || []),
+                `Exploration après clic impossible (${exploreError}) : le scénario n'utilise que la page d'ouverture.`,
+              ],
+            };
+          }
+          runResult.crawl.exploration = summarizeExploration({ clicks, next, enriched, used, error: exploreError });
+          console.log(
+            `[run ${runId}] exploration après clic : ${runResult.crawl.exploration.clicksDone}/${clicks.length} clic(s), ` +
+              `${runResult.crawl.exploration.newElementCount} nouvel(s) élément(s), ${used ? "scénario régénéré" : "scénario inchangé"}`
+          );
+          await saveRun(runId, state);
+        }
+      }
+
       if (!scenario.steps || scenario.steps.length === 0) {
         const reasons = (scenario.warnings || []).join(" ");
         throw new StepError(
