@@ -156,21 +156,40 @@ export function isMeaningfulUrlFragment(value) {
   return /[a-z0-9]/i.test(v) && !/^https?:?\/{0,2}$/i.test(v);
 }
 
+/** Chemin d'une adresse (sans paramètres ni #), ou null si ce n'est pas une adresse valide. */
+function pathOf(value) {
+  try {
+    return new URL(value).pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Attend (jusqu'à `timeout`) que l'adresse de la page CONTIENNE `expected`. On attend plutôt que de
  * lire l'adresse une fois : après un clic, la redirection ou le changement de route d'une appli
  * monopage arrive quelques instants plus tard. Échoue avec l'adresse réellement atteinte.
+ *
+ * `options.baseUrl` (la page ouverte au début du test) permet de choisir la bonne piste : si la page est
+ * restée sur la même adresse, une action manque peut-être ; si elle a changé d'adresse mais pas vers
+ * celle attendue, c'est plutôt l'adresse écrite dans le ticket qui est à vérifier.
  */
-export async function waitForUrlContaining(page, expected, timeout) {
+export async function waitForUrlContaining(page, expected, timeout, options = {}) {
   const wanted = String(expected ?? "").trim();
   try {
     await page.waitForURL((url) => url.href.includes(wanted), { timeout, waitUntil: "commit" });
   } catch {
-    const current = redactUrl(page.url());
+    const currentRaw = page.url();
+    const current = redactUrl(currentRaw);
+    const currentPath = pathOf(currentRaw);
+    const startPath = options.baseUrl ? pathOf(options.baseUrl) : null;
+    const moved = currentPath !== null && startPath !== null && currentPath !== startPath;
     throw new StepError("URL_MISMATCH", `Adresse attendue (contient) : "${wanted}" — adresse actuelle : "${current}"`, {
       expected: `L'adresse contient « ${wanted} »`,
       found: `Adresse actuelle : ${current}`,
-      hint: "La navigation attendue n'a pas eu lieu : une action manque peut-être avant (clic, envoi du formulaire), ou le formulaire a affiché une erreur (voir la capture).",
+      hint: moved
+        ? `La page a bien changé d'adresse, mais pas vers « ${wanted} » : si la page affichée sur la capture est la bonne, remplace l'adresse attendue dans le ticket par celle-ci (${currentPath}).`
+        : "La page est restée sur la même adresse : une action manque peut-être avant (clic, envoi du formulaire), ou le formulaire a affiché une erreur (voir la capture).",
     });
   }
 }

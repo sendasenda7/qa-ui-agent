@@ -301,7 +301,7 @@ async function performStep(page, baseUrl, step, timeouts) {
           hint: "Indique dans le ticket l'adresse exacte attendue après l'action.",
         });
       }
-      await waitForUrlContaining(page, step.value, stepTimeoutMs);
+      await waitForUrlContaining(page, step.value, stepTimeoutMs, { baseUrl });
       return;
     }
 

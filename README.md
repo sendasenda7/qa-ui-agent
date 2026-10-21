@@ -460,6 +460,28 @@ npm install
 npm run dev
 ```
 
+## Limites connues
+
+Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il ne prouve :
+
+- **L'IA peut varier.** Le scénario est généré par un modèle (Groq) : deux runs du même ticket peuvent donner des étapes un peu
+  différentes. Les garde-fous retirent les sélecteurs inventés et les vérifications qui réussiraient toujours, et la « confiance »
+  baisse quand le scénario ne vérifie rien, mais un ticket flou donne un test flou. Cite les libellés exacts et les adresses attendues.
+- **Les pages suivantes ne sont connues que pour les clics.** L'exploration rejoue au plus 3 clics du début du scénario. Après une
+  saisie ou une connexion, la page atteinte n'est pas explorée à l'avance : pour la vérifier, donne dans le ticket l'adresse
+  (`assert_url`) ou un texte exact qui doit apparaître.
+- **Un test « réussi » ne prouve que ce qu'il vérifie.** Sans étape `assert_*`, le rapport l'avertit et plafonne la confiance à 30 %.
+- **Sélecteurs.** Un élément sans nom accessible, sans id ni attribut stable reçoit un sélecteur de position (fragile si la page change).
+- **Régression visuelle.** Elle compare des captures pixel à pixel : une date, un compteur de notifications ou une animation qui
+  change donne un écart. Deux runs ne se comparent que s'ils ont le même ticket, la même URL et le même navigateur.
+- **RTL / traduction FR-AR.** La détection de textes non traduits est une heuristique : les noms propres et marques (« Powered by »)
+  peuvent être signalés à tort (liste `I18N_IGNORE_TEXTS` pour les ignorer).
+- **Comptes de test.** Une connexion automatique utilise `QA_SECRET_*` ; les captures montrent l'email et l'identifiant (pas le mot
+  de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
+- **Pas encore couverts :** accessibilité, affichage mobile/tablette, performance, liens cassés, iframes et pages derrière une
+  double authentification (non testés).
+- **Stockage.** Les runs et les captures sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
+
 ## Prochaines pistes
 
 - Capture prise au moment de l'échec avec l'élément concerné encadré
