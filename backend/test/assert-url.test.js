@@ -111,3 +111,22 @@ test("waitForRendered : ne plante jamais, même si la page échoue ou n'affiche 
   await waitForRendered({ waitForFunction: async () => { called = true; }, evaluate: async () => {} }, 0);
   assert.equal(called, false, "RENDER_TIMEOUT_MS=0 désactive l'attente");
 });
+
+test("piste d'adresse : même page -> « une action manque » ; page changée -> « vérifie l'adresse du ticket »", async () => {
+  const hintFor = async (current, base) => {
+    try {
+      await waitForUrlContaining(fakePage(current), "/dashboard", 20, { baseUrl: base });
+    } catch (err) {
+      return err.hint;
+    }
+  };
+  const same = await hintFor("https://x.tn/auth/login?x=1", "https://x.tn/auth/login");
+  assert.match(same, /restée sur la même adresse.*action manque/);
+  const moved = await hintFor("https://x.tn/workspace/profile", "https://x.tn/auth/login");
+  assert.match(moved, /a bien changé d'adresse/);
+  assert.match(moved, /remplace l'adresse attendue dans le ticket/);
+  assert.match(moved, /\/workspace\/profile/);
+  assert.match(moved, /« \/dashboard »/);
+  // sans page de départ connue : on ne prétend rien, piste prudente
+  assert.match(await hintFor("https://x.tn/a", undefined), /restée sur la même adresse/);
+});
