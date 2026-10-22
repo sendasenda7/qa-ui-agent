@@ -35,10 +35,12 @@ test("pickExplorationClicks : les clics du début, jusqu'à la première saisie"
   assert.equal(clicks[1].fallbackSelector, "text=B");
 });
 
-test("pickExplorationClicks : plafonné, et jamais un sélecteur refusé ou un retour arrière", () => {
+test("pickExplorationClicks : plafonné, et jamais un sélecteur refusé en premier ni un retour arrière", () => {
   const many = ["#1", "#2", "#3", "#4", "#5"].map((s) => click(s));
   assert.equal(pickExplorationClicks(many).length, MAX_EXPLORE_CLICKS);
-  assert.deepEqual(pickExplorationClicks([click("#a"), click("#x", { selectorValid: false }), click("#b")]).map((c) => c.selector), ["#a"]);
+  // Un clic refusé n'est jamais tenté en premier ; après un clic réussi il l'est (le bouton peut n'apparaître qu'après).
+  assert.deepEqual(pickExplorationClicks([click("#x", { selectorValid: false }), click("#b")]), []);
+  assert.deepEqual(pickExplorationClicks([click("#a"), click("#x", { selectorValid: false }), click("#b")]).map((c) => c.selector), ["#a", "#x", "#b"]);
   assert.deepEqual(pickExplorationClicks([click("#a"), { type: "go_back" }, click("#b")]).map((c) => c.selector), ["#a"]);
   assert.deepEqual(pickExplorationClicks([{ type: "navigate" }, { type: "assert_url", value: "/x" }]), []);
   assert.deepEqual(pickExplorationClicks(undefined), []);

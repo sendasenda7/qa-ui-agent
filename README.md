@@ -366,6 +366,8 @@ reste refusé.
 
 - Seuls des **clics** sont faits pendant l'exploration (jamais de saisie ni d'envoi), 3 au plus, tant que le
   scénario ne contient pas encore de saisie.
+- Un clic dont le bouton n'existe pas encore sur la page de départ (ex. « Continuer », visible seulement après le choix
+  du profil) est quand même tenté **à partir du 2ᵉ clic** ; s'il échoue vraiment, l'exploration s'arrête et le rapport le dit.
 - Si rien de nouveau n'apparaît, l'IA n'est pas rappelée. Si l'exploration échoue, le run continue avec
   le premier scénario et un avertissement.
 - Le rapport indique toujours le bilan : « Page explorée après « ... » puis « ... » : N élément(s) en plus », ou « rien de nouveau sur la page atteinte », ou « le clic « ... » n'a pas pu être fait (raison) ». Le terminal du serveur affiche aussi une ligne `exploration après clic : 2/2 clic(s)...` à chaque run.
