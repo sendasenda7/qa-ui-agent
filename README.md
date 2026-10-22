@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── run-history.js       # Historique et tendances : regroupement par ticket, tendance, erreurs fréquentes (pur)
 │   │   ├── failure-capture.js   # Capture d'échec : élément visé encadré en rouge + bandeau (code et cause)
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
 │   │   ├── diagnose-page.js     # Diagnostic : pourquoi une page s'ouvre lentement (requêtes bloquées)
@@ -356,6 +357,26 @@ rapport (cliquer pour agrandir), dans le JSON exporté (`failureScreenshot`) et 
 temps et ne peut jamais faire échouer ou bloquer un run. Les valeurs secrètes ne figurent pas dans le bandeau
 (il reprend la cause déjà masquée) ; un champ visible de la page, lui, apparaît comme sur n'importe quelle capture.
 
+## Historique et tendances
+
+L'écran **Historique** (`/history`, menu « Historique », ou le lien en haut de « Reports ») répond à « mes tests
+vont-ils mieux ou moins bien avec le temps ? » à partir des runs déjà enregistrés (rien de plus à configurer) :
+
+- **Chiffres globaux** : runs terminés, taux de réussite, durée moyenne, runs instables (étape réussie seulement après relance).
+- **Derniers runs** : une barre par run (couleur = résultat, hauteur = durée), cliquable vers son rapport.
+- **Par ticket** : les runs de la même URL + même ticket + même navigateur sont regroupés (même règle que le diff visuel ;
+  espaces et majuscules ignorés). Chaque ticket affiche sa **tendance** :
+  *Régression* (vient de casser), *Échoue de façon répétée*, *Instable* (résultats qui alternent ou réussite après relance),
+  *Rétabli*, *Stable*, plus « De plus en plus lent » quand les 3 derniers runs durent 30 % de plus que les 3 d'avant.
+  Les tests à regarder d'abord (régression, échecs répétés) sont en haut.
+- **Erreurs les plus fréquentes** : les codes d'erreur (`E-ELM-001`...) qui reviennent le plus, avec leur libellé.
+
+Règles : seuls les runs **terminés** comptent (« en cours » est ignoré) ; une erreur du pipeline (site injoignable, page vide)
+compte comme un échec ; au plus 20 runs par ticket sont affichés et les 300 runs les plus récents sont lus.
+Les anciens runs enregistrés avant les codes d'erreur comptent dans les taux, mais sans code.
+
+- **API** : `GET /api/history` (token requis) — le calcul est dans `backend/src/run-history.js`, testé sans navigateur.
+
 ## Exploration après un clic
 
 Le crawl normal ne voit que la page affichée à l'ouverture. Quand le scénario de l'IA commence par des
@@ -468,6 +489,7 @@ App React (Vite + Tailwind), thème sombre. Écrans principaux :
   l'exécution).
 - **Visual & RTL** (`/visual-rtl`) — comparateur de deux runs (côte à côte ou diff overlay) +
   vérification i18n.
+- **Historique** (`/history`) — taux de réussite, durées, tendances par ticket, erreurs fréquentes.
 - **Rapport** (`/reports/:id`) — résumé du ticket + lien vers le ticket externe, score de
   confiance, étapes détaillées, notes manuelles libres, bouton "Relancer ce scénario", export PDF
   (`jspdf`, chargé en import dynamique pour ne pas alourdir le bundle principal).
@@ -508,4 +530,4 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
 
 - Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Exploration après une saisie (aujourd'hui seuls les clics sont rejoués pendant l'exploration)
-- Historique du score de confiance dans le temps, par ticket
+- Courbe du score de confiance dans le temps, par ticket (l'Historique montre déjà réussite, durée et instabilité)
