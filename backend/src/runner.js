@@ -1,4 +1,5 @@
 import { launchBrowser, resolveBrowserEngine } from "./browser.js";
+import { captureFailureScreenshot } from "./failure-capture.js";
 import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
 import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
@@ -148,6 +149,17 @@ export async function runScenario(url, scenario, options = {}) {
         stepResult.screenshot = screenshotPath;
       } catch {
         // Si même le screenshot échoue (page fermée, crash...), on continue sans bloquer.
+      }
+
+      // Échec : une seconde capture, avec l'élément visé encadré et la cause en bandeau.
+      if (stepResult.status === "failed") {
+        const failureShot = await captureFailureScreenshot(page, {
+          index,
+          step,
+          failure: stepResult.failure,
+          path: `${screenshotDir}/${runId}-step${index}-failure.png`,
+        });
+        if (failureShot) stepResult.failureScreenshot = failureShot;
       }
 
       results.push(stepResult);

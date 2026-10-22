@@ -1,4 +1,5 @@
 import { Lightbulb } from "lucide-react";
+import { screenshotUrl } from "../lib/api.js";
 
 function Row({ label, children }) {
   return (
@@ -42,6 +43,22 @@ export default function StepFailure({ result }) {
           <Lightbulb size={12} className="mt-0.5 shrink-0 text-warning" />
           <span>{failure.hint}</span>
         </p>
+      )}
+
+      {result.failureScreenshot && screenshotUrl(result.failureScreenshot) && (
+        <a
+          href={screenshotUrl(result.failureScreenshot)}
+          target="_blank"
+          rel="noreferrer"
+          className="flex flex-col gap-1 text-[11px] text-text-faint"
+        >
+          <span>Capture au moment de l'échec (élément visé encadré en rouge) — cliquer pour agrandir</span>
+          <img
+            src={screenshotUrl(result.failureScreenshot)}
+            alt="Page au moment de l'échec, élément visé encadré en rouge"
+            className="w-full max-w-xl rounded-lg border border-danger/30"
+          />
+        </a>
       )}
 
       {failure.technical && (

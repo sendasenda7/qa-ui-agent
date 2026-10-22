@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── failure-capture.js   # Capture d'échec : élément visé encadré en rouge + bandeau (code et cause)
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
 │   │   ├── diagnose-page.js     # Diagnostic : pourquoi une page s'ouvre lentement (requêtes bloquées)
 │   │   ├── secrets.js           # Variables secrètes QA_SECRET_* : résolution à l'exécution et masquage
@@ -339,6 +340,22 @@ n'aurait aucun élément à utiliser) et la phase « Exploration » apparaît en
 Une page qui n'a que du texte (sans champ ni bouton) reste testable avec `assert_text`. Les chemins du
 serveur et les clés d'API sont masqués dans tous les messages enregistrés.
 
+## Capture au moment de l'échec
+
+Quand une étape échoue, le runner prend une **seconde capture** (`run-screenshots/<runId>-step<N>-failure.png`),
+en plus de la capture normale de l'étape (celle-là reste inchangée : c'est elle que compare le diff visuel).
+Sur cette capture d'échec :
+
+- un **cadre rouge** entoure l'élément visé quand il est trouvé et visible (bouton désactivé, texte attendu, champ...) ;
+- un **bandeau rouge** en haut de la page rappelle l'étape, le code d'erreur (`E-ELM-001`...) et la cause ;
+- si l'élément est **introuvable** ou **présent mais invisible**, il n'y a pas de cadre : le bandeau le dit ;
+- pour une étape sans élément (adresse attendue, ouverture de la page), il n'y a que le bandeau.
+
+Le repère est un calque posé par la page puis retiré aussitôt : il ne modifie pas le site testé. La capture est dans le
+rapport (cliquer pour agrandir), dans le JSON exporté (`failureScreenshot`) et dans le JUnit XML. Elle est bornée dans le
+temps et ne peut jamais faire échouer ou bloquer un run. Les valeurs secrètes ne figurent pas dans le bandeau
+(il reprend la cause déjà masquée) ; un champ visible de la page, lui, apparaît comme sur n'importe quelle capture.
+
 ## Exploration après un clic
 
 Le crawl normal ne voit que la page affichée à l'ouverture. Quand le scénario de l'IA commence par des
@@ -487,7 +504,6 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
 
 ## Prochaines pistes
 
-- Capture prise au moment de l'échec avec l'élément concerné encadré
 - Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Exploration après une saisie (aujourd'hui seuls les clics sont rejoués pendant l'exploration)
 - Historique du score de confiance dans le temps, par ticket
