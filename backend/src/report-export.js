@@ -99,6 +99,7 @@ function describeStepNotes(planned, result) {
     }
   }
   if (result?.screenshot) lines.push(`Capture : ${result.screenshot}`);
+  if (result?.failureScreenshot) lines.push(`Capture de l'échec : ${result.failureScreenshot}`);
   return lines.join("\n");
 }
 
@@ -149,6 +150,7 @@ export function buildJsonReport(content) {
       firstFailure: result?.firstFailure ?? null,
       error: executed && result.error ? jsonFailure(result.failure, result.error) : null,
       screenshot: result?.screenshot ?? null,
+      failureScreenshot: result?.failureScreenshot ?? null,
     };
   });
 
