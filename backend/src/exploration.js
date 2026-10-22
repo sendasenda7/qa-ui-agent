@@ -10,7 +10,10 @@ export const MAX_EXPLORE_CLICKS = 3;
  * Choisit, dans un scénario déjà validé, les clics qui mènent vers la page suivante : les clics du
  * début du scénario, jusqu'à la première saisie (fill/select) ou le premier retour arrière. Les
  * ouvertures de page et les vérifications ne changent pas l'état de la page : elles sont sautées.
- * Un clic dont le sélecteur a été refusé par la validation n'est jamais tenté.
+ * Un clic dont le sélecteur a été refusé par la validation n'est jamais tenté en PREMIER (la page de
+ * départ ne l'a pas). Après un premier clic en revanche, il est tenté : un bouton comme « Continuer »
+ * n'existe souvent qu'une fois le rôle choisi, donc il manque forcément au crawl de la page de départ.
+ * Si ce clic échoue vraiment (sélecteur inventé), l'exploration s'arrête là et le dit (failedClick).
  */
 export function pickExplorationClicks(steps, max = MAX_EXPLORE_CLICKS) {
   const clicks = [];
@@ -18,7 +21,8 @@ export function pickExplorationClicks(steps, max = MAX_EXPLORE_CLICKS) {
     if (clicks.length >= max) break;
     if (step.type === "fill" || step.type === "select" || step.type === "go_back") break;
     if (step.type !== "click") continue; // navigate, assert_* : l'état de la page ne change pas
-    if (step.selectorValid === false || !step.selector) break;
+    if (!step.selector) break;
+    if (step.selectorValid === false && clicks.length === 0) break;
     clicks.push({
       selector: step.selector,
       fallbackSelector: step.fallbackSelector,
