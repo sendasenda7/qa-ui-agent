@@ -7,6 +7,7 @@ import {
   Radio,
   Languages,
   FileBarChart,
+  TrendingUp,
   LogOut,
 } from "lucide-react";
 import { logout } from "../lib/api.js";
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
   { to: "/new-run", label: "New Run", icon: Plus },
   { to: "/live-runs", label: "Live Runs", icon: Radio },
   { to: "/visual-rtl", label: "Visual/RTL", icon: Languages },
+  { to: "/history", label: "Historique", icon: TrendingUp },
   { to: "/reports", label: "Reports", icon: FileBarChart },
 ];
 

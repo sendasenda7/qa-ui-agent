@@ -30,7 +30,8 @@ export default function Reports() {
       <header className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Rapports</h1>
         <p className="text-sm text-text-muted">
-          Rapport détaillé de chaque test exécuté.
+          Rapport détaillé de chaque test exécuté.{" "}
+          <Link to="/history" className="text-accent-blue">Voir l'historique et les tendances</Link>
         </p>
       </header>
 

@@ -114,6 +114,11 @@ export function getRuns({ status } = {}) {
   return getJson(`/api/runs${query}`);
 }
 
+/** Historique et tendances de tous les runs terminés (voir backend/src/run-history.js). */
+export function getHistory() {
+  return getJson("/api/history");
+}
+
 export function getRun(id) {
   return getJson(`/api/runs/${id}`);
 }

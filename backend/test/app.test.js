@@ -224,3 +224,40 @@ test("export : erreurs claires (format inconnu, run inconnu, run en cours) et au
   assert.equal((await fetch(`${base}/api/runs/7001/export`)).status, 401);
   assert.equal((await fetch(`${base}/api/runs/7001/export?token=${token}`)).status, 401, "?token= refusé sur /api");
 });
+
+test("GET /api/history : exige un token et résume les runs enregistrés", async () => {
+  assert.equal((await fetch(`${base}/api/history`)).status, 401);
+
+  const make = (runId, status) => ({
+    ticketText: "Se connecter",
+    options: { browserEngine: "chromium" },
+    scenario: { ticketSummary: "Se connecter", confidence: 85, warnings: [], steps: [] },
+    runResult: {
+      runId,
+      url: "https://x.test/",
+      status,
+      startedAt: new Date(runId).toISOString(),
+      finishedAt: new Date(runId + 12000).toISOString(),
+      stepsTotal: 2,
+      stepsRun: 2,
+      stepsPassed: status === "passed" ? 2 : 1,
+      flakySteps: 0,
+      results: status === "passed" ? [] : [{ status: "failed", description: "Cliquer", error: "Élément introuvable", failure: { code: "E-ELM-001" } }],
+    },
+  });
+  await saveRun(1700000000001, make(1700000000001, "passed"));
+  await saveRun(1700000000002, make(1700000000002, "failed"));
+  await saveRun(1700000000003, make(1700000000003, "running"));
+
+  const res = await fetch(`${base}/api/history`, authed());
+  assert.equal(res.status, 200);
+  const history = await res.json();
+  const ticket = history.tickets.find((t) => t.url === "https://x.test/");
+  assert.ok(ticket, "le ticket des runs enregistrés est dans l'historique");
+  assert.equal(ticket.total, 2, "le run en cours n'est pas compté");
+  assert.equal(ticket.passRate, 50);
+  assert.equal(ticket.avgDurationMs, 12000);
+  assert.equal(ticket.trend.code, "regression");
+  assert.ok(history.overall.total >= 2);
+  assert.ok(history.topErrors.some((item) => item.code === "E-ELM-001"));
+});

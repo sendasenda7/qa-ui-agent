@@ -8,6 +8,7 @@ import NewRun from "./pages/NewRun.jsx";
 import LiveRuns from "./pages/LiveRuns.jsx";
 import LiveRunDetail from "./pages/LiveRunDetail.jsx";
 import VisualRtl from "./pages/VisualRtl.jsx";
+import History from "./pages/History.jsx";
 import Reports from "./pages/Reports.jsx";
 import ReportDetail from "./pages/ReportDetail.jsx";
 import { isLoggedIn } from "./lib/api.js";
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/live-runs" element={<LiveRuns />} />
         <Route path="/live-runs/:id" element={<LiveRunDetail />} />
         <Route path="/visual-rtl" element={<VisualRtl />} />
+        <Route path="/history" element={<History />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/:id" element={<ReportDetail />} />
       </Routes>

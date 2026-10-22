@@ -144,6 +144,56 @@ export async function listRuns({ status } = {}) {
     .sort((a, b) => b.runId - a.runId);
 }
 
+/** Nombre maximum de runs relus pour l'historique (les plus récents) : borne le temps de lecture. */
+const HISTORY_MAX_RUNS = 300;
+
+/**
+ * Ce qui sert à l'historique et aux tendances : une ligne par run terminé, sans les captures ni le détail
+ * des étapes. Les fichiers illisibles ou en cours sont ignorés.
+ */
+export async function listHistoryEntries({ limit = HISTORY_MAX_RUNS } = {}) {
+  await mkdir(RUNS_DIR, { recursive: true });
+  const ids = (await readdir(RUNS_DIR))
+    .filter((file) => RUN_FILE_PATTERN.test(file))
+    .map((file) => file.slice(0, -".json".length))
+    .sort((a, b) => Number(b) - Number(a))
+    .slice(0, limit);
+
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const content = await readRun(id);
+        const runResult = content?.runResult;
+        if (!runResult || runResult.status === "running") return null;
+
+        const failedStep = (runResult.results || []).find((r) => r?.status === "failed");
+        const failure = failedStep?.failure ?? runResult.failure ?? null;
+        const started = Date.parse(runResult.startedAt);
+        const finished = Date.parse(runResult.finishedAt);
+        return {
+          runId: runResult.runId,
+          url: runResult.url,
+          ticketText: content.ticketText ?? "",
+          ticketSummary: content.scenario?.ticketSummary ?? "",
+          browserEngine: content.options?.browserEngine ?? runResult.browserEngine ?? null,
+          status: runResult.status,
+          durationMs: Number.isFinite(started) && Number.isFinite(finished) && finished >= started ? finished - started : null,
+          stepsPassed: runResult.stepsPassed ?? 0,
+          stepsTotal: runResult.stepsTotal ?? 0,
+          flakySteps: runResult.flakySteps ?? 0,
+          confidence: content.scenario?.confidence ?? null,
+          failureCode: failure?.code ?? null,
+          failureMessage: failedStep?.error ?? runResult.error ?? null,
+          failureStep: failedStep?.description ?? null,
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return entries.filter(Boolean);
+}
+
 /**
  * Au démarrage du serveur, aucun run ne peut réellement être en cours : ceux qui
  * sont encore marqués "running" sur disque ont été interrompus (crash, Ctrl+C...).

@@ -7,7 +7,8 @@ import { generateScenario } from "./planner.js";
 import { checkLocalization } from "./localization-check.js";
 import { compareRuns } from "./visual-diff.js";
 import { startRun, startReplay, reserveRunSlot } from "./run-executor.js";
-import { listRuns, readRun, saveRun, saveNotes } from "./run-store.js";
+import { listRuns, listHistoryEntries, readRun, saveRun, saveNotes } from "./run-store.js";
+import { buildHistory } from "./run-history.js";
 import {
   checkPassword,
   issueToken,
@@ -272,6 +273,14 @@ export function createApp({ env = process.env } = {}) {
     asyncRoute(async (req, res) => {
       const status = typeof req.query.status === "string" ? req.query.status : undefined;
       res.json(await listRuns({ status }));
+    })
+  );
+
+  // Historique et tendances : taux de réussite, durées, tests instables, erreurs fréquentes.
+  app.get(
+    "/api/history",
+    asyncRoute(async (req, res) => {
+      res.json(buildHistory(await listHistoryEntries()));
     })
   );
 
