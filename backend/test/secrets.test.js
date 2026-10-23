@@ -107,6 +107,16 @@ test("planner : variable inconnue et mot de passe en clair sont signalés ; une 
     assert.equal(warnings.filter((w) => w.includes("Mot de passe écrit en clair")).length, 1);
     assert.equal(warnings.some((w) => w.includes("mot de passe ok")), false);
   });
+  // L'étape au mot de passe en clair est marquée (pas de trace Playwright) ; celle qui utilise une variable ne l'est pas.
+  const { steps } = validateScenario(
+    { steps: [
+      { type: "fill", selector: "#pw", value: "123456", description: "en clair" },
+      { type: "fill", selector: "#pw", value: "{{QA_SECRET_PASSWORD}}", description: "variable" },
+    ] },
+    crawl
+  );
+  assert.equal(steps.find((s) => s.description === "en clair").sensitive, true);
+  assert.equal(steps.find((s) => s.description === "variable").sensitive, undefined);
 });
 
 test("planner : le prompt donne les NOMS des variables, jamais leurs valeurs", async () => {

@@ -34,6 +34,18 @@ test("scenarioUsesSecrets : détecte une variable {{QA_SECRET_*}} dans une étap
   assert.equal(scenarioUsesSecrets(undefined), false);
 });
 
+test("scenarioUsesSecrets : un mot de passe écrit en clair empêche aussi la trace", () => {
+  // marqué par le planner
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "fill", selector: "#x", value: "abc", sensitive: true }] }), true);
+  // champ reconnu à son sélecteur ou à sa description (scénarios enregistrés avant le repère)
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "fill", selector: "#password", value: "abc" }] }), true);
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "fill", selector: 'input[type="password"]', value: "abc" }] }), true);
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "fill", selector: "#x", description: "Saisir le mot de passe", value: "abc" }] }), true);
+  // un champ ordinaire, ou un clic sur « Mot de passe oublié ? », n'empêche pas la trace
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "fill", selector: "#email", description: "Saisir l'email", value: "a@b.tn" }] }), false);
+  assert.equal(scenarioUsesSecrets({ steps: [{ type: "click", selector: "role=link[name=\"Mot de passe oublié ?\"]", description: "Cliquer sur Mot de passe oublié" }] }), false);
+});
+
 test("finishTracing : un run en échec écrit le zip et renvoie son chemin", async () => {
   const context = fakeContext();
   const result = await finishTracing(context, { failed: true, path: "run-traces/42.zip" });

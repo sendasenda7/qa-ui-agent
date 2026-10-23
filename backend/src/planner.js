@@ -539,6 +539,8 @@ export function validateScenario(scenario, crawlResult) {
       );
     }
     if (step.type === "fill" && names.length === 0 && typeBySelector.get(step.selector) === "password") {
+      // Marque l'étape : le runner n'enregistre pas de trace Playwright quand un mot de passe est saisi en clair.
+      step.sensitive = true;
       validationWarnings.push(
         `Mot de passe écrit en clair dans le scénario (étape "${step.description}") : utilise une variable QA_SECRET_... du .env.`
       );
