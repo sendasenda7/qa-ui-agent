@@ -6,6 +6,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressBar from "../components/ProgressBar.jsx";
 import RunAnalysis from "../components/RunAnalysis.jsx";
 import StepFailure from "../components/StepFailure.jsx";
+import TraceNote from "../components/TraceNote.jsx";
 import AttemptsNote from "../components/AttemptsNote.jsx";
 import FlakyNotice from "../components/FlakyNotice.jsx";
 import RunError from "../components/RunError.jsx";
@@ -315,6 +316,7 @@ export default function ReportDetail() {
             </div>
           </div>
         ))}
+        <TraceNote runResult={runResult} />
       </section>
 
       <NotesSection runId={id} initialNotes={data.notes ?? ""} />

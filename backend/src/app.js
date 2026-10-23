@@ -133,6 +133,15 @@ export function createApp({ env = process.env } = {}) {
   app.use("/screenshots", requireAuthForFiles, express.static(resolve("run-screenshots")));
   app.use("/debug-screenshots", requireAuthForFiles, express.static(resolve("debug-screenshots")));
   app.use("/diff-screenshots", requireAuthForFiles, express.static(resolve("diff-screenshots")));
+  // Traces Playwright (zip rejouables) : elles contiennent des captures et le DOM de la page, donc
+  // même protection. Servies en téléchargement (pas affichées dans le navigateur).
+  app.use(
+    "/traces",
+    requireAuthForFiles,
+    express.static(resolve("run-traces"), {
+      setHeaders: (res) => res.setHeader("Content-Disposition", "attachment"),
+    })
+  );
 
   // Crawl seul (écran "Explore").
   app.post(

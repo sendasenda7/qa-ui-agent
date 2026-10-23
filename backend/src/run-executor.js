@@ -156,6 +156,8 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
     runResult.stepsPassed = finalResult.stepsPassed;
     runResult.results = finalResult.results;
     runResult.flakySteps = countFlakySteps(runResult.results);
+    if (finalResult.tracePath) runResult.tracePath = finalResult.tracePath;
+    if (finalResult.traceSkipped) runResult.traceSkipped = finalResult.traceSkipped;
 
     // Analyses optionnelles (RTL, diff visuel). Le statut reste "running" pendant toute
     // l'analyse : le frontend arrête de relire un run dès qu'il n'est plus "running", il

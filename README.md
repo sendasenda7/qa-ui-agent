@@ -357,6 +357,24 @@ rapport (cliquer pour agrandir), dans le JSON exporté (`failureScreenshot`) et 
 temps et ne peut jamais faire échouer ou bloquer un run. Les valeurs secrètes ne figurent pas dans le bandeau
 (il reprend la cause déjà masquée) ; un champ visible de la page, lui, apparaît comme sur n'importe quelle capture.
 
+## Trace Playwright rejouable sur échec
+
+Quand un run **échoue**, le runner garde une **trace Playwright** (`run-traces/<runId>.zip`) : un enregistrement du test qu'on
+rejoue action par action, avec les captures avant/après chaque action, l'état de la page (DOM), les requêtes réseau et la
+console. C'est l'outil le plus rapide pour comprendre *pourquoi* une étape a échoué, surtout quand le test est instable.
+
+- **Où la trouver** : dans le rapport du run, bloc « Trace Playwright rejouable » (bouton de téléchargement), et dans le JSON
+  exporté (`tracePath`).
+- **La rejouer** : `npx playwright show-trace <runId>.zip` depuis le dossier du fichier téléchargé, ou glisser le zip dans
+  [trace.playwright.dev](https://trace.playwright.dev) (tout se passe dans le navigateur, rien n'est envoyé).
+- **Run réussi** : aucune trace n'est conservée (elle pèse plusieurs Mo pour rien).
+- **Identifiants secrets** : une trace enregistre chaque action *avec ses valeurs*. Si le scénario utilise une variable
+  `{{QA_SECRET_*}}`, aucune trace n'est enregistrée (le rapport l'explique, `traceSkipped: "secrets"`), pour ne jamais écrire un
+  mot de passe en clair dans un fichier.
+- **Sécurité** : le zip contient des captures et le DOM de la page testée ; la route `/traces` exige donc le même token que
+  les captures d'écran et sert le fichier en téléchargement.
+- La trace est une aide au diagnostic : si elle ne peut pas être démarrée ou écrite, le run continue normalement.
+
 ## Historique et tendances
 
 L'écran **Historique** (`/history`, menu « Historique », ou le lien en haut de « Reports ») répond à « mes tests
@@ -524,7 +542,7 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
   de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
 - **Pas encore couverts :** accessibilité, affichage mobile/tablette, performance, liens cassés, iframes et pages derrière une
   double authentification (non testés).
-- **Stockage.** Les runs et les captures sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
+- **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
 
 ## Prochaines pistes
 
