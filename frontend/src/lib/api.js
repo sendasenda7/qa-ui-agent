@@ -154,6 +154,19 @@ export function screenshotUrl(relativePath) {
   return `${API_BASE_URL}/${cleaned}?token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * URL de téléchargement d'une trace Playwright (chemin relatif type "run-traces/123.zip").
+ * Même principe que screenshotUrl : le token passe dans l'URL car un lien <a> n'envoie pas de header.
+ */
+export function traceUrl(relativePath) {
+  if (!relativePath) return null;
+  const token = getToken();
+  if (!token) return null;
+
+  const cleaned = relativePath.replace(/^run-traces\//, "traces/");
+  return `${API_BASE_URL}/${cleaned}?token=${encodeURIComponent(token)}`;
+}
+
 const EXPORT_EXTENSIONS = { junit: "xml", json: "json" };
 
 /**

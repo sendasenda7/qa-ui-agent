@@ -3,7 +3,7 @@ import { captureFailureScreenshot } from "./failure-capture.js";
 import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
 import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
-import { resolveSecrets, maskSecretsDeep } from "./secrets.js";
+import { resolveSecrets, maskSecretsDeep, hasPlaceholder } from "./secrets.js";
 import { mkdir } from "fs/promises";
 
 // Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
@@ -27,6 +27,35 @@ export function getRetryConfig(env = process.env) {
     retryTimeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_RETRY_TIMEOUT_MS,
     retryDelayMs: DEFAULT_RETRY_DELAY_MS,
   };
+}
+
+/**
+ * Une trace Playwright (zip rejouable avec `npx playwright show-trace`) enregistre chaque action
+ * AVEC ses arguments : une valeur secrète saisie par un `fill` s'y retrouverait en clair, alors que
+ * les rapports et les captures les masquent. Si le scénario cite une variable `{{QA_SECRET_*}}`,
+ * on n'enregistre donc pas de trace. Exporté pour les tests.
+ */
+export function scenarioUsesSecrets(scenario) {
+  return (scenario?.steps ?? []).some((step) => typeof step.value === "string" && hasPlaceholder(step.value));
+}
+
+/**
+ * Termine l'enregistrement de la trace : si le run a échoué on écrit le zip à `path`, sinon on
+ * jette l'enregistrement (une trace pèse plusieurs Mo, inutile pour un test réussi).
+ * Ne lève jamais d'erreur : la trace est une aide au diagnostic, elle ne doit pas faire échouer
+ * le run. Renvoie le chemin écrit, ou null. Exporté pour les tests.
+ */
+export async function finishTracing(context, { failed, path }) {
+  try {
+    if (failed) {
+      await context.tracing.stop({ path });
+      return path;
+    }
+    await context.tracing.stop();
+  } catch (err) {
+    console.error("Trace Playwright non enregistrée :", err.message);
+  }
+  return null;
 }
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,6 +109,9 @@ export async function executeStepWithRetry(page, baseUrl, step, timeouts, option
  *                           sur une page lente à répondre (staging chargé, réseau faible) ;
  *  - navigationTimeoutMs  : délai max pour navigate/go_back (défaut 30s) ;
  *  - browserEngine        : "chromium" (défaut) | "firefox" | "webkit" ;
+ *  - trace                : enregistre une trace Playwright rejouable, conservée seulement si le
+ *                           run échoue (défaut true ; jamais si le scénario utilise des secrets) ;
+ *  - traceDir             : dossier des traces (défaut "run-traces") ;
  *  - onProgress           : callback appelé au fil de l'exécution, pour suivre le run en direct :
  *                             { type: "step_start", index, step }
  *                             { type: "step_end",   index, result }
@@ -88,6 +120,8 @@ export async function runScenario(url, scenario, options = {}) {
   const {
     headless = true,
     screenshotDir = "run-screenshots",
+    traceDir = "run-traces",
+    trace = true,
     runId = Date.now(),
     stepTimeoutMs = 10000,
     navigationTimeoutMs = 30000,
@@ -106,14 +140,34 @@ export async function runScenario(url, scenario, options = {}) {
   }
 
   await mkdir(screenshotDir, { recursive: true });
+  if (trace) await mkdir(traceDir, { recursive: true });
 
   const browser = await launchBrowser(browserEngine, { headless });
   const results = [];
   let overallStatus = "passed";
   const retryConfig = { ...getRetryConfig(), ...(options.stepRetries !== undefined ? { maxRetries: options.stepRetries } : {}) };
 
+  // Trace : on passe par un contexte (au lieu de browser.newPage()) pour pouvoir enregistrer la session.
+  let context = null;
+  let tracing = false;
+  let traceSkipped = null;
+  let tracePath = null;
+
   try {
-    const page = await browser.newPage();
+    context = await browser.newContext();
+    if (trace) {
+      if (scenarioUsesSecrets(scenario)) {
+        traceSkipped = "secrets";
+      } else {
+        try {
+          await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+          tracing = true;
+        } catch (err) {
+          console.error("Trace Playwright non démarrée :", err.message);
+        }
+      }
+    }
+    const page = await context.newPage();
 
     for (const [index, step] of scenario.steps.entries()) {
       await notify({ type: "step_start", index, step });
@@ -169,7 +223,16 @@ export async function runScenario(url, scenario, options = {}) {
       // supposent presque toujours que les précédentes ont réussi.
       if (stepResult.status === "failed") break;
     }
+
+    if (tracing) {
+      tracePath = await finishTracing(context, {
+        failed: overallStatus === "failed",
+        path: `${traceDir}/${runId}.zip`,
+      });
+      tracing = false;
+    }
   } finally {
+    if (tracing && context) await finishTracing(context, { failed: false });
     // Même si quelque chose plante en cours de route, on ne laisse jamais un navigateur orphelin.
     await browser.close();
   }
@@ -183,6 +246,8 @@ export async function runScenario(url, scenario, options = {}) {
     stepsTotal: scenario.steps.length,
     stepsRun: results.length,
     stepsPassed: results.filter((r) => r.status === "passed").length,
+    ...(tracePath ? { tracePath } : {}),
+    ...(traceSkipped ? { traceSkipped } : {}),
     results,
   };
 }
