@@ -370,7 +370,10 @@ console. C'est l'outil le plus rapide pour comprendre *pourquoi* une étape a é
 - **Run réussi** : aucune trace n'est conservée (elle pèse plusieurs Mo pour rien).
 - **Identifiants secrets** : une trace enregistre chaque action *avec ses valeurs*. Si le scénario utilise une variable
   `{{QA_SECRET_*}}`, aucune trace n'est enregistrée (le rapport l'explique, `traceSkipped: "secrets"`), pour ne jamais écrire un
-  mot de passe en clair dans un fichier.
+  mot de passe en clair dans un fichier. Même règle si un mot de passe est **écrit en clair** dans le scénario (champ de mot
+  de passe repéré : le planner marque l'étape `sensitive`, et les scénarios plus anciens sont reconnus à leur sélecteur ou
+  leur description) : le rapport affiche alors le même message, et l'avertissement « Mot de passe écrit en clair » reste là
+  pour te pousser à utiliser une variable `QA_SECRET_*`.
 - **Sécurité** : le zip contient des captures et le DOM de la page testée ; la route `/traces` exige donc le même token que
   les captures d'écran et sert le fichier en téléchargement.
 - La trace est une aide au diagnostic : si elle ne peut pas être démarrée ou écrite, le run continue normalement.

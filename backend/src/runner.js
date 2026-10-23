@@ -29,14 +29,25 @@ export function getRetryConfig(env = process.env) {
   };
 }
 
+/** Champ de mot de passe d'après le sélecteur ou la description (scénarios anciens, sans repère `sensitive`). */
+const PASSWORD_FIELD = /passw|mot\s*de\s*passe|\bmdp\b|\bpwd\b/i;
+
 /**
  * Une trace Playwright (zip rejouable avec `npx playwright show-trace`) enregistre chaque action
  * AVEC ses arguments : une valeur secrète saisie par un `fill` s'y retrouverait en clair, alors que
- * les rapports et les captures les masquent. Si le scénario cite une variable `{{QA_SECRET_*}}`,
- * on n'enregistre donc pas de trace. Exporté pour les tests.
+ * les rapports et les captures les masquent. On n'enregistre donc pas de trace quand :
+ *  - le scénario cite une variable `{{QA_SECRET_*}}` ;
+ *  - ou un mot de passe est saisi EN CLAIR (étape marquée `sensitive` par le planner, ou champ de
+ *    mot de passe reconnu à son sélecteur / sa description pour les scénarios plus anciens).
+ * Exporté pour les tests.
  */
 export function scenarioUsesSecrets(scenario) {
-  return (scenario?.steps ?? []).some((step) => typeof step.value === "string" && hasPlaceholder(step.value));
+  return (scenario?.steps ?? []).some(
+    (step) =>
+      (typeof step.value === "string" && hasPlaceholder(step.value)) ||
+      step.sensitive === true ||
+      (step.type === "fill" && PASSWORD_FIELD.test(`${step.selector ?? ""} ${step.description ?? ""}`))
+  );
 }
 
 /**
