@@ -182,6 +182,21 @@ de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visua
 (étapes à sélecteur halluciné), `url-guard.js` (SSRF), le stockage des runs et des notes, la
 détection du bouton de langue, et l'API HTTP complète (auth, 400/401/404/429, CORS, en-têtes).
 
+### Tests du frontend
+
+```bash
+cd frontend
+npm test                 # lance les tests (Vitest + Testing Library)
+npm run test:coverage    # idem + pourcentage de couverture (rapport HTML dans frontend/coverage/)
+```
+
+Les tests sont dans `frontend/test/` : fonctions utilitaires, appels à l'API (avec `fetch`
+simulé, dont le cas 401), composants (badge, interrupteur, échec d'étape, trace, audit
+d'accessibilité, frise des étapes...), hooks (chronomètre, suivi d'un run) et écrans (connexion,
+nouveau test, rapports, historique). Aucun serveur n'est nécessaire. La commande de couverture
+échoue si elle passe sous les seuils réglés dans `frontend/vite.config.js` : la couverture ne
+peut pas baisser sans que la CI le signale. La CI affiche le pourcentage à chaque push.
+
 ## Sélecteurs d'éléments
 
 Pour chaque élément interactif, le crawler choisit le sélecteur le plus stable, dans cet ordre :
