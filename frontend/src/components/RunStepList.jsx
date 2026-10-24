@@ -2,6 +2,7 @@ import { CheckCircle2, XCircle, Loader2, Circle } from "lucide-react";
 import { screenshotUrl } from "../lib/api.js";
 import StepFailure from "./StepFailure.jsx";
 import AttemptsNote from "./AttemptsNote.jsx";
+import { hideBrokenImage } from "../lib/images.js";
 
 /** "passed" | "failed" si l'étape est terminée, "running" si c'est l'étape en cours, sinon "pending". */
 function getStepState(index, results, currentIndex) {
@@ -55,6 +56,7 @@ export default function RunStepList({ steps, results, currentIndex }) {
                 <img
                   src={screenshotUrl(result.screenshot)}
                   alt=""
+                  onError={hideBrokenImage}
                   className="w-16 h-12 object-cover rounded-lg border border-border shrink-0"
                 />
               )}

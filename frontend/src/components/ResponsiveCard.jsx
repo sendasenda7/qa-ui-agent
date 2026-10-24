@@ -1,5 +1,6 @@
 import AnalysisCard from "./AnalysisCard.jsx";
 import { screenshotUrl } from "../lib/api.js";
+import { hideBrokenImage } from "../lib/images.js";
 
 const SEVERITY_LABELS = { high: "Important", medium: "Moyen", low: "Faible" };
 const SEVERITY_STYLES = {
@@ -60,6 +61,7 @@ function ViewportBlock({ viewport }) {
           <img
             src={url}
             alt={`Page en affichage ${viewport.label.toLowerCase()}`}
+            onError={hideBrokenImage}
             className="w-full max-h-48 object-cover object-top rounded-md border border-border"
           />
         </a>

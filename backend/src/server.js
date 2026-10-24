@@ -5,6 +5,7 @@ loadEnvFile(".env");
 import { createApp } from "./app.js";
 import { recoverInterruptedRuns } from "./run-store.js";
 import { getAuthConfigWarnings } from "./auth.js";
+import { startCleanupSchedule } from "./cleanup.js";
 
 const PORT = process.env.PORT || 4000;
 
@@ -30,4 +31,5 @@ try {
 
 createApp().listen(PORT, () => {
   console.log(`→ API QA-UI Agent démarrée sur http://localhost:${PORT}`);
+  startCleanupSchedule();
 });

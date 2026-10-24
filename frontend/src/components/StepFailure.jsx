@@ -1,5 +1,6 @@
 import { Lightbulb } from "lucide-react";
 import { screenshotUrl } from "../lib/api.js";
+import { hideBrokenImage } from "../lib/images.js";
 
 function Row({ label, children }) {
   return (
@@ -56,6 +57,7 @@ export default function StepFailure({ result }) {
           <img
             src={screenshotUrl(result.failureScreenshot)}
             alt="Page au moment de l'échec, élément visé encadré en rouge"
+            onError={hideBrokenImage}
             className="w-full max-w-xl rounded-lg border border-danger/30"
           />
         </a>
