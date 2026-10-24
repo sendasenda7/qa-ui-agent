@@ -20,7 +20,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function withRetry(operation, attempts = 4) {
+async function withRetry(operation, attempts = 8) {
   for (let attempt = 1; ; attempt++) {
     try {
       return await operation();

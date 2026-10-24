@@ -83,7 +83,7 @@ test("aucune option : pas de phase d'analyse, pas de résultats rtl/visualDiff",
 test("checkRtl : la phase 'analyzing' est visible pendant l'analyse, puis le rapport est rattaché au run", async () => {
   // Analyse volontairement lente : laisse le temps à l'observateur de voir la phase intermédiaire.
   const localize = async () => {
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 300));
     return okReport;
   };
   const { runId, done } = await startRun(
@@ -102,7 +102,7 @@ test("checkRtl : la phase 'analyzing' est visible pendant l'analyse, puis le rap
       const key = `${status}/${phase}/rtl=${rtl ? rtl.status : "-"}`;
       if (seen.at(-1) !== key) seen.push(key);
     }
-    await new Promise((r) => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 25));
   }
 
   assert.ok(seen.includes("running/analyzing/rtl=-"), `phase d'analyse non observée : ${seen.join(" | ")}`);
