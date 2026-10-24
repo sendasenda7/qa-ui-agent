@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2 } from "lucide-react";
+import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2, Accessibility } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { startTestRun } from "../lib/api.js";
@@ -23,6 +23,7 @@ export default function NewRun() {
   const [browserEngine, setBrowserEngine] = useState(DEFAULT_BROWSER_ENGINE);
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
+  const [checkA11y, setCheckA11y] = useState(true);
   const [deepReview, setDeepReview] = useState(false);
   const [timeoutMs, setTimeoutMs] = useState(10000);
 
@@ -43,6 +44,7 @@ export default function NewRun() {
         deepReview,
         checkRtl,
         checkVisualDiff,
+        checkA11y,
         browserEngine,
       });
       navigate(`/live-runs/${runId}`);
@@ -202,6 +204,19 @@ export default function NewRun() {
                 </div>
               </div>
               <Toggle checked={checkVisualDiff} onChange={setCheckVisualDiff} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Accessibility size={16} className="text-text-muted mt-0.5 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-sm">Accessibilité</span>
+                  <span className="text-[11px] text-text-faint">
+                    Audite chaque page rencontrée avec axe-core (contrastes, étiquettes, noms de boutons...)
+                  </span>
+                </div>
+              </div>
+              <Toggle checked={checkA11y} onChange={setCheckA11y} />
             </div>
 
             <div className="flex items-center justify-between gap-3">

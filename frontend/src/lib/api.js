@@ -78,6 +78,7 @@ export function startTestRun({
   deepReview,
   checkRtl,
   checkVisualDiff,
+  checkA11y,
   browserEngine,
 }) {
   return postJson("/api/test-run", {
@@ -88,6 +89,7 @@ export function startTestRun({
     deepReview,
     checkRtl,
     checkVisualDiff,
+    checkA11y,
     browserEngine,
   });
 }
