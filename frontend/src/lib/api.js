@@ -80,6 +80,8 @@ export function startTestRun({
   checkVisualDiff,
   checkA11y,
   checkResponsive,
+  checkPerformance,
+  checkLinks,
   browserEngine,
 }) {
   return postJson("/api/test-run", {
@@ -92,6 +94,8 @@ export function startTestRun({
     checkVisualDiff,
     checkA11y,
     checkResponsive,
+    checkPerformance,
+    checkLinks,
     browserEngine,
   });
 }

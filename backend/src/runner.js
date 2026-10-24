@@ -6,6 +6,8 @@ import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { resolveSecrets, maskSecretsDeep, hasPlaceholder } from "./secrets.js";
 import { createAccessibilityRecorder } from "./accessibility.js";
 import { createResponsiveRecorder } from "./responsive.js";
+import { createPerformanceRecorder } from "./performance.js";
+import { createLinksRecorder } from "./links.js";
 import { mkdir } from "fs/promises";
 
 // Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
@@ -126,6 +128,9 @@ export async function executeStepWithRetry(page, baseUrl, step, timeouts, option
  *                           accessibility.js (défaut false ; ne change jamais le statut du run) ;
  *  - checkResponsive      : rejoue chaque nouvelle page en mobile / tablette / bureau et cherche les défauts
  *                           d'affichage, voir responsive.js (défaut false ; ne change jamais le statut du run) ;
+ *  - checkPerformance     : mesure chaque nouvelle page (TTFB, FCP, LCP, CLS, poids), voir performance.js (défaut false) ;
+ *  - checkLinks           : vérifie les liens, ancres et images de chaque nouvelle page, voir links.js (défaut false) ;
+ *    (aucun des contrôles ne change le statut du run)
  *  - trace                : enregistre une trace Playwright rejouable, conservée seulement si le
  *                           run échoue (défaut true ; jamais si le scénario utilise des secrets) ;
  *  - traceDir             : dossier des traces (défaut "run-traces") ;
@@ -145,6 +150,8 @@ export async function runScenario(url, scenario, options = {}) {
     browserEngine,
     checkA11y = false,
     checkResponsive = false,
+    checkPerformance = false,
+    checkLinks = false,
     onProgress,
   } = options;
 
@@ -167,6 +174,8 @@ export async function runScenario(url, scenario, options = {}) {
   const retryConfig = { ...getRetryConfig(), ...(options.stepRetries !== undefined ? { maxRetries: options.stepRetries } : {}) };
 
   const a11y = checkA11y ? createAccessibilityRecorder() : null;
+  const perf = checkPerformance ? createPerformanceRecorder() : null;
+  const linkCheck = checkLinks ? createLinksRecorder() : null;
   const responsive = checkResponsive ? createResponsiveRecorder({ runId, screenshotDir }) : null;
 
   // Trace : on passe par un contexte (au lieu de browser.newPage()) pour pouvoir enregistrer la session.
@@ -240,6 +249,9 @@ export async function runScenario(url, scenario, options = {}) {
 
       // Audit d'accessibilité de la page où l'on se trouve (si c'est une nouvelle adresse).
       if (a11y) await a11y.afterStep(page);
+      // Performance et liens AVANT le responsive : redimensionner la fenêtre fausserait le CLS.
+      if (perf) await perf.afterStep(page);
+      if (linkCheck) await linkCheck.afterStep(page);
       // Contrôle responsive de la même page (redimensionnée puis rétablie).
       if (responsive) await responsive.afterStep(page);
 
@@ -277,6 +289,8 @@ export async function runScenario(url, scenario, options = {}) {
     ...(traceSkipped ? { traceSkipped } : {}),
     ...(a11y ? { accessibility: a11y.result() } : {}),
     ...(responsive ? { responsive: responsive.result() } : {}),
+    ...(perf ? { performance: perf.result() } : {}),
+    ...(linkCheck ? { links: await linkCheck.finish() } : {}),
     results,
   };
 }

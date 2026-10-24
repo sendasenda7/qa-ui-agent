@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2, Accessibility, Smartphone } from "lucide-react";
+import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2, Accessibility, Smartphone, Gauge, Unlink } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { startTestRun } from "../lib/api.js";
@@ -25,6 +25,8 @@ export default function NewRun() {
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
   const [checkA11y, setCheckA11y] = useState(true);
   const [checkResponsive, setCheckResponsive] = useState(true);
+  const [checkPerformance, setCheckPerformance] = useState(true);
+  const [checkLinks, setCheckLinks] = useState(true);
   const [deepReview, setDeepReview] = useState(false);
   const [timeoutMs, setTimeoutMs] = useState(10000);
 
@@ -47,6 +49,8 @@ export default function NewRun() {
         checkVisualDiff,
         checkA11y,
         checkResponsive,
+        checkPerformance,
+        checkLinks,
         browserEngine,
       });
       navigate(`/live-runs/${runId}`);
@@ -232,6 +236,32 @@ export default function NewRun() {
                 </div>
               </div>
               <Toggle checked={checkResponsive} onChange={setCheckResponsive} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Gauge size={16} className="text-text-muted mt-0.5 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-sm">Performance</span>
+                  <span className="text-[11px] text-text-faint">
+                    Mesure chaque page : temps d'affichage (LCP), décalages (CLS), poids et nombre de requêtes
+                  </span>
+                </div>
+              </div>
+              <Toggle checked={checkPerformance} onChange={setCheckPerformance} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Unlink size={16} className="text-text-muted mt-0.5 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-sm">Liens cassés</span>
+                  <span className="text-[11px] text-text-faint">
+                    Vérifie les liens, ancres et images de chaque page (requêtes sans connexion, ajoute quelques secondes)
+                  </span>
+                </div>
+              </div>
+              <Toggle checked={checkLinks} onChange={setCheckLinks} />
             </div>
 
             <div className="flex items-center justify-between gap-3">
