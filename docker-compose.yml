@@ -1,0 +1,33 @@
+# Lance tout l'outil :  docker compose up --build
+#   frontend : http://localhost:8080      API : http://localhost:4000
+# Prérequis : copier backend/.env.example en backend/.env et le remplir (clé Groq, mot de passe...).
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      # Le navigateur qui ouvre le frontend doit être autorisé à appeler l'API.
+      CORS_ORIGIN: http://localhost:8080,http://127.0.0.1:8080
+    ports:
+      - "4000:4000"
+    volumes:
+      - qa-data:/data
+    # Recommandé par Playwright dans Docker : évite les plantages de Chromium (mémoire partagée)
+    # et les processus zombies.
+    init: true
+    ipc: host
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:4000
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  qa-data:
