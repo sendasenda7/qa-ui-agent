@@ -193,6 +193,7 @@ export function createApp({ env = process.env } = {}) {
         checkRtl,
         checkVisualDiff,
         checkA11y,
+        checkResponsive,
         browserEngine,
       } = req.body;
       if (!url || !ticketText) throw new HttpError(400, "url et ticketText requis");
@@ -229,6 +230,7 @@ export function createApp({ env = process.env } = {}) {
             checkRtl: checkRtl === true,
             checkVisualDiff: checkVisualDiff === true,
             checkA11y: checkA11y === true,
+            checkResponsive: checkResponsive === true,
             browserEngine: engine,
           },
           {},

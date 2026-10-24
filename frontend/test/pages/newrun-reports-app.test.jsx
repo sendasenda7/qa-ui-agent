@@ -32,10 +32,10 @@ describe('NewRun', () => {
     expect(screen.getByRole('button', { name: 'Lancer le test' })).toBeDisabled()
   })
 
-  it('les interrupteurs RTL, visuel et accessibilité sont activés par défaut, la relecture non', () => {
+  it('les interrupteurs RTL, visuel, accessibilité et responsive sont activés par défaut, la relecture non', () => {
     renderNewRun()
     const states = screen.getAllByRole('switch').map((s) => s.getAttribute('aria-checked'))
-    expect(states).toEqual(['true', 'true', 'true', 'false'])
+    expect(states).toEqual(['true', 'true', 'true', 'true', 'false'])
   })
 
   it('envoie les options choisies puis ouvre le suivi du run', async () => {
@@ -48,7 +48,7 @@ describe('NewRun', () => {
     expect(await screen.findByText('Suivi du run')).toBeInTheDocument()
     expect(api.startTestRun).toHaveBeenCalledWith(expect.objectContaining({
       ticketText: 'Tester le multi-langue FR/AR', browserEngine: 'firefox',
-      checkA11y: false, checkRtl: true, checkVisualDiff: true, deepReview: false,
+      checkA11y: false, checkResponsive: true, checkRtl: true, checkVisualDiff: true, deepReview: false,
     }))
   })
 
