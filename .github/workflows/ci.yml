@@ -39,4 +39,5 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx oxlint .
+      - run: npm run test:coverage
       - run: npm audit --omit=dev --audit-level=high

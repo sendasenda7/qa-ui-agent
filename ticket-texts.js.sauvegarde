@@ -1,0 +1,119 @@
+/**
+ * Textes cités dans un ticket qu'il faut VÉRIFIER à l'écran (fonctions pures, testées sans navigateur).
+ *
+ * Pourquoi : quand le ticket demande de vérifier un texte exact (« Bienvenue chez Mars ») qui n'est pas
+ * dans la liste des textes de la page, l'IA a tendance à abandonner la vérification et à écrire « impossible
+ * de la vérifier » dans ses avertissements. Or, pour un test, un texte absent doit faire ÉCHOUER la
+ * vérification : sinon un titre qui disparaît après un déploiement passerait inaperçu.
+ *
+ * On ne retient qu'un texte cité dont le contexte dit clairement qu'il doit s'afficher (« le texte exact
+ * « X » est visible », « le message « X » s'affiche »). Les libellés d'éléments (« le bouton « Continuer » »),
+ * les adresses et les valeurs à saisir ne sont jamais retenus : ils ont leurs propres étapes.
+ */
+
+const MAX_TEXT_LENGTH = 120;
+
+// \b ne fonctionne pas avec les lettres accentuées en JavaScript : on borne avec \p{L}.
+const NOT_LETTER_BEFORE = "(?<![\\p{L}])";
+const NOT_LETTER_AFTER = "(?![\\p{L}])";
+function wordsRegex(words) {
+  return new RegExp(`${NOT_LETTER_BEFORE}(?:${words.join("|")})${NOT_LETTER_AFTER}`, "iu");
+}
+
+// Mots qui annoncent qu'on parle d'un texte affiché (avant la citation).
+const TEXT_NOUNS = wordsRegex([
+  "texte",
+  "message",
+  "mention",
+  "phrase",
+  "titre",
+  "libellé",
+  "libelle",
+  "bandeau",
+  "notification",
+  "erreur",
+  "confirmation",
+  "toast",
+  "alerte",
+]);
+
+// Mots qui annoncent que la citation désigne un ÉLÉMENT, une adresse ou une page (juste avant la citation).
+const ELEMENT_NOUNS = wordsRegex([
+  "bouton",
+  "lien",
+  "onglet",
+  "champ",
+  "carte",
+  "case",
+  "option",
+  "menu",
+  "icône",
+  "icone",
+  "liste",
+  "rubrique",
+  "section",
+  "page",
+  "écran",
+  "ecran",
+  "url",
+  "adresse",
+  "sélecteur",
+  "selecteur",
+]);
+
+// Après la citation : « s'affiche », « est visible », « apparaît »...
+const DISPLAYED_AFTER = /^\s*[,;]?\s*(?:s['’]affich|est affich|sont affich|doit s['’]affich|apparaî|apparai|doit apparaî|doit apparai|est visible|sont visibles|figure|est présent|est present)/iu;
+
+const QUOTED = /«\s*([^«»]+?)\s*»|“\s*([^“”]+?)\s*”|"([^"]+?)"/gu;
+
+/** Forme comparable d'un texte : minuscules, apostrophes droites, espaces simples. */
+export function normalizeText(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Textes exacts que le ticket demande de vérifier à l'écran, sans doublon, dans l'ordre du ticket.
+ * Un texte contenant un guillemet droit ou un antislash est écarté : il ne pourrait pas s'écrire
+ * dans un sélecteur `text="..."` sans ambiguïté.
+ */
+export function extractTextsToVerify(ticketText) {
+  if (typeof ticketText !== "string" || ticketText.trim() === "") return [];
+
+  const found = [];
+  const seen = new Set();
+  for (const match of ticketText.matchAll(QUOTED)) {
+    const text = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+    if (text.length < 2 || text.length > MAX_TEXT_LENGTH) continue;
+    if (/["\\]/.test(text)) continue;
+
+    const start = match.index;
+    const end = start + match[0].length;
+    const justBefore = ticketText.slice(Math.max(0, start - 28), start);
+    if (ELEMENT_NOUNS.test(justBefore)) continue;
+
+    const before = ticketText.slice(Math.max(0, start - 60), start);
+    const after = ticketText.slice(end, end + 45);
+    if (!TEXT_NOUNS.test(before) && !DISPLAYED_AFTER.test(after)) continue;
+
+    const key = normalizeText(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push(text);
+  }
+  return found;
+}
+
+/** Vrai si une étape du scénario cible déjà ce texte (par son sélecteur ou sa valeur attendue). */
+export function stepsMentionText(steps, text) {
+  const wanted = normalizeText(text);
+  return (steps || []).some((step) => {
+    if (!step || step.type === "navigate") return false;
+    return [step.selector, step.value].some(
+      (field) => typeof field === "string" && normalizeText(field).includes(wanted)
+    );
+  });
+}
