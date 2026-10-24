@@ -5,6 +5,7 @@ import { StepError, classifyError, enrichFailure, isRetryable } from "./step-err
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { resolveSecrets, maskSecretsDeep, hasPlaceholder } from "./secrets.js";
 import { createAccessibilityRecorder } from "./accessibility.js";
+import { createResponsiveRecorder } from "./responsive.js";
 import { mkdir } from "fs/promises";
 
 // Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
@@ -123,6 +124,8 @@ export async function executeStepWithRetry(page, baseUrl, step, timeouts, option
  *  - browserEngine        : "chromium" (défaut) | "firefox" | "webkit" ;
  *  - checkA11y            : audite l'accessibilité (axe-core) de chaque nouvelle page rencontrée, voir
  *                           accessibility.js (défaut false ; ne change jamais le statut du run) ;
+ *  - checkResponsive      : rejoue chaque nouvelle page en mobile / tablette / bureau et cherche les défauts
+ *                           d'affichage, voir responsive.js (défaut false ; ne change jamais le statut du run) ;
  *  - trace                : enregistre une trace Playwright rejouable, conservée seulement si le
  *                           run échoue (défaut true ; jamais si le scénario utilise des secrets) ;
  *  - traceDir             : dossier des traces (défaut "run-traces") ;
@@ -141,6 +144,7 @@ export async function runScenario(url, scenario, options = {}) {
     navigationTimeoutMs = 30000,
     browserEngine,
     checkA11y = false,
+    checkResponsive = false,
     onProgress,
   } = options;
 
@@ -163,6 +167,7 @@ export async function runScenario(url, scenario, options = {}) {
   const retryConfig = { ...getRetryConfig(), ...(options.stepRetries !== undefined ? { maxRetries: options.stepRetries } : {}) };
 
   const a11y = checkA11y ? createAccessibilityRecorder() : null;
+  const responsive = checkResponsive ? createResponsiveRecorder({ runId, screenshotDir }) : null;
 
   // Trace : on passe par un contexte (au lieu de browser.newPage()) pour pouvoir enregistrer la session.
   let context = null;
@@ -235,6 +240,8 @@ export async function runScenario(url, scenario, options = {}) {
 
       // Audit d'accessibilité de la page où l'on se trouve (si c'est une nouvelle adresse).
       if (a11y) await a11y.afterStep(page);
+      // Contrôle responsive de la même page (redimensionnée puis rétablie).
+      if (responsive) await responsive.afterStep(page);
 
       results.push(stepResult);
       await notify({ type: "step_end", index, result: stepResult });
@@ -269,6 +276,7 @@ export async function runScenario(url, scenario, options = {}) {
     ...(tracePath ? { tracePath } : {}),
     ...(traceSkipped ? { traceSkipped } : {}),
     ...(a11y ? { accessibility: a11y.result() } : {}),
+    ...(responsive ? { responsive: responsive.result() } : {}),
     results,
   };
 }

@@ -17,6 +17,7 @@ qa-ui-agent/
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
 │   │   ├── accessibility.js     # Audit d'accessibilité (axe-core) pendant le scénario : résumé par page, enregistreur
+│   │   ├── responsive.js        # Contrôle responsive : chaque page rejouée en mobile / tablette / bureau (défilement horizontal, cibles tactiles, viewport)
 │   │   ├── run-history.js       # Historique et tendances : regroupement par ticket, tendance, erreurs fréquentes (pur)
 │   │   ├── failure-capture.js   # Capture d'échec : élément visé encadré en rouge + bandeau (code et cause)
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
@@ -175,7 +176,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — 213 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — plus de 280 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -415,6 +416,33 @@ de page manquants...
 - Coût : environ 1 à 2 secondes par page auditée. Le code d'axe-core est lu dans `node_modules` et injecté dans la page par le
   navigateur (la politique de sécurité du site n'y change rien) ; aucune donnée n'est envoyée à un service externe.
 
+## Responsive (mobile, tablette, bureau)
+
+Sur l'écran « New Run », l'interrupteur **Responsive** (activé par défaut) fait voir chaque page du test à trois tailles
+d'écran : **mobile** (375 × 812), **tablette** (768 × 1024) et **bureau** (1440 × 900).
+
+- **Quelles pages ?** Comme pour l'accessibilité : chaque **nouvelle page rencontrée** pendant le scénario (adresse sans `?requête`
+  ni `#ancre`), 4 au plus. La **même page** est redimensionnée puis remise à sa taille d'origine : la session, la connexion et
+  l'état du test sont conservés, aucun clic n'est rejoué.
+- **Ce qui est contrôlé :**
+  - `R-OVERFLOW` : la page défile horizontalement, avec les éléments qui dépassent de l'écran (gravité importante sur mobile
+    et tablette, moyenne sur bureau) ;
+  - `R-NO-VIEWPORT-META` : pas de balise `<meta name="viewport">` (mobile seulement) : un vrai téléphone afficherait la version
+    bureau réduite ;
+  - `R-SMALL-TARGET` : boutons, liens ou champs de moins de 24 × 24 px sur mobile et tablette (WCAG 2.2, critère 2.5.8 ; les liens
+    placés dans une phrase sont exemptés).
+- **Dans le rapport** : bloc « Responsive » avec, par page et par taille d'écran, une **capture** (cliquer pour agrandir)
+  et la liste des défauts. Les captures sont des fichiers `run-screenshots/<runId>-responsive-p<N>-<taille>.png`, séparés des
+  captures d'étape : elles n'entrent pas dans le diff visuel.
+- **Le statut du test ne change jamais** : un test vert reste vert, même avec des défauts d'affichage (comme l'accessibilité et le RTL).
+  Une erreur de contrôle est notée dans le rapport, sans faire échouer le run.
+- **Export JSON** : `analyses.responsive` (totaux, pages, tailles, défauts, chemin des captures). **Rejeu** : « Relancer ce scénario »
+  reprend le choix du run d'origine.
+- **Limites** : on redimensionne la fenêtre, on n'émule pas un vrai téléphone (écran tactile, user-agent, densité de pixels) ; un site qui
+  sert une autre page selon le navigateur n'est donc pas vu comme sur mobile. Le contrôle repère des défauts mesurables, pas un affichage
+  « peu soigné » : regarde les captures et complète par un essai sur un vrai appareil. Un site qui réagit mal à un redimensionnement
+  en cours de route peut, dans de rares cas, changer d'état : désactive alors l'interrupteur pour ce test.
+
 ## Historique et tendances
 
 L'écran **Historique** (`/history`, menu « Historique », ou le lien en haut de « Reports ») répond à « mes tests
@@ -580,7 +608,7 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
   peuvent être signalés à tort (liste `I18N_IGNORE_TEXTS` pour les ignorer).
 - **Comptes de test.** Une connexion automatique utilise `QA_SECRET_*` ; les captures montrent l'email et l'identifiant (pas le mot
   de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
-- **Pas encore couverts :** affichage mobile/tablette, performance, liens cassés, iframes et pages derrière une
+- **Pas encore couverts :** performance, liens cassés, iframes et pages derrière une
   double authentification (non testés).
 - **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2, Accessibility } from "lucide-react";
+import { Globe, Sparkles, ShieldCheck, Image as ImageIcon, Loader2, Link2, Accessibility, Smartphone } from "lucide-react";
 import PipelineTabs from "../components/PipelineTabs.jsx";
 import Toggle from "../components/Toggle.jsx";
 import { startTestRun } from "../lib/api.js";
@@ -24,6 +24,7 @@ export default function NewRun() {
   const [checkRtl, setCheckRtl] = useState(true);
   const [checkVisualDiff, setCheckVisualDiff] = useState(true);
   const [checkA11y, setCheckA11y] = useState(true);
+  const [checkResponsive, setCheckResponsive] = useState(true);
   const [deepReview, setDeepReview] = useState(false);
   const [timeoutMs, setTimeoutMs] = useState(10000);
 
@@ -45,6 +46,7 @@ export default function NewRun() {
         checkRtl,
         checkVisualDiff,
         checkA11y,
+        checkResponsive,
         browserEngine,
       });
       navigate(`/live-runs/${runId}`);
@@ -217,6 +219,19 @@ export default function NewRun() {
                 </div>
               </div>
               <Toggle checked={checkA11y} onChange={setCheckA11y} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <Smartphone size={16} className="text-text-muted mt-0.5 shrink-0" />
+                <div className="flex flex-col">
+                  <span className="text-sm">Responsive</span>
+                  <span className="text-[11px] text-text-faint">
+                    Rejoue chaque page en mobile, tablette et bureau (défilement horizontal, cibles trop petites...)
+                  </span>
+                </div>
+              </div>
+              <Toggle checked={checkResponsive} onChange={setCheckResponsive} />
             </div>
 
             <div className="flex items-center justify-between gap-3">

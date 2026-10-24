@@ -222,6 +222,31 @@ export function buildJsonReport(content) {
             })),
           }
         : null,
+      responsive: runResult.responsive
+        ? {
+            status: runResult.responsive.status ?? null,
+            error: runResult.responsive.error ?? null,
+            totals: runResult.responsive.totals ?? null,
+            pages: (runResult.responsive.pages ?? []).map((page) => ({
+              url: page.url,
+              title: page.title,
+              viewports: (page.viewports ?? []).map((viewport) => ({
+                name: viewport.name,
+                width: viewport.width,
+                height: viewport.height,
+                error: viewport.error ?? null,
+                screenshot: viewport.screenshot ?? null,
+                issues: (viewport.issues ?? []).map((issue) => ({
+                  code: issue.code,
+                  severity: issue.severity,
+                  message: issue.message,
+                  count: issue.count,
+                  examples: issue.examples ?? [],
+                })),
+              })),
+            })),
+          }
+        : null,
       visualDiff: visual
         ? {
             status: visual.status ?? null,

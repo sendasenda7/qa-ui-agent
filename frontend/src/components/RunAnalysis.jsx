@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { screenshotUrl } from "../lib/api.js";
 import AnalysisCard from "./AnalysisCard.jsx";
 import AccessibilityCard from "./AccessibilityCard.jsx";
+import ResponsiveCard from "./ResponsiveCard.jsx";
 
 function Message({ children, danger = false }) {
   return <p className={`text-sm ${danger ? "text-danger" : "text-text-faint"}`}>{children}</p>;
@@ -158,6 +159,7 @@ export default function RunAnalysis({ options, runResult }) {
       <RtlCard enabled={Boolean(options?.checkRtl)} rtl={runResult.rtl} />
       <VisualDiffCard enabled={Boolean(options?.checkVisualDiff)} visualDiff={runResult.visualDiff} />
       <AccessibilityCard enabled={Boolean(options?.checkA11y)} accessibility={runResult.accessibility} />
+      <ResponsiveCard enabled={Boolean(options?.checkResponsive)} responsive={runResult.responsive} />
     </>
   );
 }
