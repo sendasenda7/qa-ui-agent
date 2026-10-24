@@ -4,6 +4,7 @@ import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFr
 import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
 import { resolveSecrets, maskSecretsDeep, hasPlaceholder } from "./secrets.js";
+import { createAccessibilityRecorder } from "./accessibility.js";
 import { mkdir } from "fs/promises";
 
 // Relance automatique d'une étape en échec : une page qui se met à jour, un réseau lent ou un
@@ -120,6 +121,8 @@ export async function executeStepWithRetry(page, baseUrl, step, timeouts, option
  *                           sur une page lente à répondre (staging chargé, réseau faible) ;
  *  - navigationTimeoutMs  : délai max pour navigate/go_back (défaut 30s) ;
  *  - browserEngine        : "chromium" (défaut) | "firefox" | "webkit" ;
+ *  - checkA11y            : audite l'accessibilité (axe-core) de chaque nouvelle page rencontrée, voir
+ *                           accessibility.js (défaut false ; ne change jamais le statut du run) ;
  *  - trace                : enregistre une trace Playwright rejouable, conservée seulement si le
  *                           run échoue (défaut true ; jamais si le scénario utilise des secrets) ;
  *  - traceDir             : dossier des traces (défaut "run-traces") ;
@@ -137,6 +140,7 @@ export async function runScenario(url, scenario, options = {}) {
     stepTimeoutMs = 10000,
     navigationTimeoutMs = 30000,
     browserEngine,
+    checkA11y = false,
     onProgress,
   } = options;
 
@@ -157,6 +161,8 @@ export async function runScenario(url, scenario, options = {}) {
   const results = [];
   let overallStatus = "passed";
   const retryConfig = { ...getRetryConfig(), ...(options.stepRetries !== undefined ? { maxRetries: options.stepRetries } : {}) };
+
+  const a11y = checkA11y ? createAccessibilityRecorder() : null;
 
   // Trace : on passe par un contexte (au lieu de browser.newPage()) pour pouvoir enregistrer la session.
   let context = null;
@@ -227,6 +233,9 @@ export async function runScenario(url, scenario, options = {}) {
         if (failureShot) stepResult.failureScreenshot = failureShot;
       }
 
+      // Audit d'accessibilité de la page où l'on se trouve (si c'est une nouvelle adresse).
+      if (a11y) await a11y.afterStep(page);
+
       results.push(stepResult);
       await notify({ type: "step_end", index, result: stepResult });
 
@@ -259,6 +268,7 @@ export async function runScenario(url, scenario, options = {}) {
     stepsPassed: results.filter((r) => r.status === "passed").length,
     ...(tracePath ? { tracePath } : {}),
     ...(traceSkipped ? { traceSkipped } : {}),
+    ...(a11y ? { accessibility: a11y.result() } : {}),
     results,
   };
 }

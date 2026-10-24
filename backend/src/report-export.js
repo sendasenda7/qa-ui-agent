@@ -201,6 +201,27 @@ export function buildJsonReport(content) {
             elementsComparedCount: rtl.report?.elementsComparedCount ?? null,
           }
         : null,
+      accessibility: runResult.accessibility
+        ? {
+            status: runResult.accessibility.status ?? null,
+            error: runResult.accessibility.error ?? null,
+            totals: runResult.accessibility.totals ?? null,
+            pages: (runResult.accessibility.pages ?? []).map((page) => ({
+              url: page.url,
+              title: page.title,
+              counts: page.counts,
+              needsReview: page.needsReview ?? 0,
+              violations: (page.violations ?? []).map((rule) => ({
+                id: rule.id,
+                impact: rule.impact,
+                help: rule.help,
+                helpUrl: rule.helpUrl,
+                nodesCount: rule.nodesCount,
+                targets: (rule.nodes ?? []).map((node) => node.target),
+              })),
+            })),
+          }
+        : null,
       visualDiff: visual
         ? {
             status: visual.status ?? null,

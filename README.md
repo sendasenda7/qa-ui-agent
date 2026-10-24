@@ -16,6 +16,7 @@ qa-ui-agent/
 │   │   ├── visual-diff.js       # Étape 4 : diff visuel pixel par pixel entre deux runs
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
+│   │   ├── accessibility.js     # Audit d'accessibilité (axe-core) pendant le scénario : résumé par page, enregistreur
 │   │   ├── run-history.js       # Historique et tendances : regroupement par ticket, tendance, erreurs fréquentes (pur)
 │   │   ├── failure-capture.js   # Capture d'échec : élément visé encadré en rouge + bandeau (code et cause)
 │   │   ├── exploration.js       # Exploration après clic : choix des clics, fusion de la page suivante (pur)
@@ -26,7 +27,7 @@ qa-ui-agent/
 │   │   ├── export-report.js     # Point d'entrée : npm run export-report
 │   │   ├── step-errors.js       # Erreurs d'étape structurées : catégorie, code stable, attendu/trouvé/piste
 │   │   ├── run-executor.js      # Orchestration d'un run en arrière-plan (startRun/startReplay) + limite de runs
-│   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel)
+│   │   ├── run-analysis.js      # Analyses optionnelles après un run (RTL, diff visuel) ; l'accessibilité est auditée pendant le run (accessibility.js)
 │   │   ├── auth.js              # Mot de passe d'équipe, JWT, anti-bruteforce
 │   │   ├── url-guard.js         # Garde-fou SSRF : quelles URLs le serveur accepte d'ouvrir
 │   │   ├── app.js               # Routes Express (createApp, testable)
@@ -378,6 +379,27 @@ console. C'est l'outil le plus rapide pour comprendre *pourquoi* une étape a é
   les captures d'écran et sert le fichier en téléchargement.
 - La trace est une aide au diagnostic : si elle ne peut pas être démarrée ou écrite, le run continue normalement.
 
+## Accessibilité (axe-core)
+
+Sur l'écran « New Run », l'interrupteur **Accessibilité** (activé par défaut) fait auditer les pages du test avec
+[axe-core](https://github.com/dequelabs/axe-core), le moteur de référence pour les règles WCAG 2.0 / 2.1 (niveaux A et AA) :
+contraste insuffisant, champ de formulaire sans étiquette, bouton sans nom, image sans texte alternatif, titres ou langue
+de page manquants...
+
+- **Quelles pages ?** Chaque **nouvelle page rencontrée** pendant le scénario (adresse sans `?requête` ni `#ancre`) est auditée une
+  fois, 4 au plus : l'audit suit le parcours du test (page de connexion, formulaire, page après connexion...). Il se fait une fois la page affichée.
+- **Dans le rapport** : bloc « Accessibilité » avec, par page, les règles non respectées classées par gravité (**critique, grave,
+  modéré, mineur**), le nombre d'éléments concernés, leurs sélecteurs et un extrait de leur code, le message de correction (en
+  français) et le lien vers la règle. Les points qu'axe ne peut pas trancher sont comptés « à vérifier à la main ».
+- **Le statut du test ne change jamais** : un test vert reste vert, même avec des problèmes d'accessibilité (comme l'analyse RTL).
+  Une erreur d'audit est notée dans le rapport, sans faire échouer le run.
+- **Export JSON** : `analyses.accessibility` (totaux, pages, règles, sélecteurs).
+- **Rejeu** : « Relancer ce scénario » reprend le choix du run d'origine.
+- **Limite importante** : l'audit automatique ne trouve qu'une partie des problèmes (environ un tiers). « Aucun problème
+  détecté » ne prouve pas que la page est accessible : complète avec un test manuel (navigation au clavier seul, lecteur d'écran, zoom 200 %).
+- Coût : environ 1 à 2 secondes par page auditée. Le code d'axe-core est lu dans `node_modules` et injecté dans la page par le
+  navigateur (la politique de sécurité du site n'y change rien) ; aucune donnée n'est envoyée à un service externe.
+
 ## Historique et tendances
 
 L'écran **Historique** (`/history`, menu « Historique », ou le lien en haut de « Reports ») répond à « mes tests
@@ -505,7 +527,7 @@ App React (Vite + Tailwind), thème sombre. Écrans principaux :
 - **Explore** (`/explore`) — lance le crawl seul, affiche les éléments détectés avec leur
   sélecteur et stratégie ; bouton pour passer directement à "New Test" avec l'URL pré-remplie.
 - **New Test** (`/new-run`) — configuration du run : URL, ticket, lien du ticket Jira/Linear
-  (optionnel), timeout, toggles RTL/diff visuel/relecture IA approfondie.
+  (optionnel), timeout, toggles RTL/diff visuel/accessibilité/relecture IA approfondie.
 - **Live Run** (`/live-runs/:id`) — suivi en direct d'un run (captures d'écran réelles au fil de
   l'exécution).
 - **Visual & RTL** (`/visual-rtl`) — comparateur de deux runs (côte à côte ou diff overlay) +
@@ -543,7 +565,7 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
   peuvent être signalés à tort (liste `I18N_IGNORE_TEXTS` pour les ignorer).
 - **Comptes de test.** Une connexion automatique utilise `QA_SECRET_*` ; les captures montrent l'email et l'identifiant (pas le mot
   de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
-- **Pas encore couverts :** accessibilité, affichage mobile/tablette, performance, liens cassés, iframes et pages derrière une
+- **Pas encore couverts :** affichage mobile/tablette, performance, liens cassés, iframes et pages derrière une
   double authentification (non testés).
 - **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
 

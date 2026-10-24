@@ -74,7 +74,7 @@ test("aucune option : pas de phase d'analyse, pas de résultats rtl/visualDiff",
   const { runId, done } = await startRun(baseInput, { crawl: crawlStub, plan: planStub, run: makeRunStub([0, 0, 0]) });
   await done;
   const { runResult, options } = await readRun(runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: false, checkA11y: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.phase, "done");
   assert.equal(runResult.rtl, undefined);
   assert.equal(runResult.visualDiff, undefined);
@@ -190,7 +190,7 @@ test("rejeu : diff visuel toujours activé, comparé au run d'origine, RTL héri
   await replay.done;
 
   const saved = await readRun(replay.runId);
-  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
+  assert.deepEqual(saved.options, { checkRtl: true, checkVisualDiff: true, checkA11y: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(saved.runResult.replayOf, String(original.runId));
   assert.equal(saved.runResult.visualDiff.status, "done");
   assert.equal(saved.runResult.visualDiff.baselineRunId, original.runId);
@@ -208,7 +208,7 @@ test("rejeu d'un ancien run sans options ni capture : no_baseline, pas de planta
   const replay = await startReplay(String(oldRunId), { run: makeRunStub([1, 1, 1]) });
   await replay.done;
   const { options, runResult } = await readRun(replay.runId);
-  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
+  assert.deepEqual(options, { checkRtl: false, checkVisualDiff: true, checkA11y: false, stepTimeoutMs: 10000, navigationTimeoutMs: 30000, browserEngine: "chromium" });
   assert.equal(runResult.visualDiff.status, "no_baseline");
 });
 

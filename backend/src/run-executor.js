@@ -150,6 +150,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
       stepTimeoutMs,
       navigationTimeoutMs,
       browserEngine: state.options?.browserEngine,
+      checkA11y: Boolean(state.options?.checkA11y),
     });
     runResult.stepsTotal = finalResult.stepsTotal;
     runResult.stepsRun = finalResult.stepsRun;
@@ -158,6 +159,7 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
     runResult.flakySteps = countFlakySteps(runResult.results);
     if (finalResult.tracePath) runResult.tracePath = finalResult.tracePath;
     if (finalResult.traceSkipped) runResult.traceSkipped = finalResult.traceSkipped;
+    if (finalResult.accessibility) runResult.accessibility = finalResult.accessibility;
 
     // Analyses optionnelles (RTL, diff visuel). Le statut reste "running" pendant toute
     // l'analyse : le frontend arrête de relire un run dès qu'il n'est plus "running", il
@@ -200,6 +202,7 @@ export async function startRun(
     deepReview = false,
     checkRtl = false,
     checkVisualDiff = false,
+    checkA11y = false,
     browserEngine,
   },
   deps = {},
@@ -221,6 +224,7 @@ export async function startRun(
     options: {
       checkRtl,
       checkVisualDiff,
+      checkA11y,
       stepTimeoutMs: timeoutMs,
       navigationTimeoutMs,
       browserEngine: engine,
@@ -390,6 +394,8 @@ export async function startReplay(sourceRunId, deps = {}, reservation = null) {
     options: {
       checkRtl: Boolean(source.options?.checkRtl),
       checkVisualDiff: true,
+      // Comme l'analyse RTL, l'audit d'accessibilité suit le choix du run d'origine.
+      checkA11y: Boolean(source.options?.checkA11y),
       browserEngine: engine,
       // Mêmes timeouts que le run d'origine (un staging lent le reste au rejeu).
       stepTimeoutMs: source.options?.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
