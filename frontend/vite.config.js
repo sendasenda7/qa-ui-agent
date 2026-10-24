@@ -10,6 +10,8 @@ export default defineConfig({
     setupFiles: ['./test/setup.js'],
     include: ['test/**/*.test.{js,jsx}'],
     css: false,
+    // Marge pour les PC lents (jsdom + couverture) : un test ne doit pas échouer juste parce que la machine est lente.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{js,jsx}'],

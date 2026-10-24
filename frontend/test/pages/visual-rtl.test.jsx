@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import VisualRtl from '../../src/pages/VisualRtl.jsx'
 import * as api from '../../src/lib/api.js'
@@ -18,8 +18,7 @@ describe('Visual/RTL : onglet FR/AR + RTL', () => {
     api.checkI18n.mockResolvedValue(report())
     render(<VisualRtl />)
     const input = screen.getByDisplayValue(/staging.helpify.tn/)
-    await userEvent.clear(input)
-    await userEvent.type(input, 'https://exemple.fr')
+    fireEvent.change(input, { target: { value: 'https://exemple.fr' } })
     await userEvent.click(screen.getByRole('button', { name: 'Vérifier FR/AR + RTL' }))
     expect(api.checkI18n).toHaveBeenCalledWith({ url: 'https://exemple.fr' })
     expect(await screen.findByText('RTL appliqué')).toBeInTheDocument()
