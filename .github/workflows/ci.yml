@@ -20,7 +20,8 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - run: npm test
+      # Lance les tests ET vérifie les seuils de couverture (voir backend/package.json).
+      - run: npm run test:coverage
       - run: npm audit --omit=dev --audit-level=high
 
   frontend:

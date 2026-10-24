@@ -185,6 +185,23 @@ de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visua
 (étapes à sélecteur halluciné), `url-guard.js` (SSRF), le stockage des runs et des notes, la
 détection du bouton de langue, et l'API HTTP complète (auth, 400/401/404/429, CORS, en-têtes).
 
+### Couverture du backend
+
+```bash
+cd backend
+npm run test:coverage    # lance les mêmes tests + vérifie les seuils de couverture
+```
+
+La commande affiche, fichier par fichier, la part du code exécutée par les tests, et **échoue** si la
+couverture globale passe sous **80 % des lignes, 82 % des branches et 85 % des fonctions** (seuils
+réglés dans `backend/package.json`). Les fichiers de test sont exclus du calcul (`--test-coverage-exclude`) :
+selon la version de Node ils sont sinon comptés, et leur couverture proche de 100 % gonflerait le total. La CI l'exécute à la place de `npm test` : la couverture ne peut
+pas baisser sans que la CI le signale. Mesure au moment de l'ajout : environ 83 % des lignes, 86 % des
+branches et 90 % des fonctions. Les fichiers les moins couverts (`crawler.js`, `localization-check.js`,
+`runner.js`) pilotent un vrai navigateur : ils seront couverts par un test de bout en bout. Les seuils sont
+volontairement un peu sous la mesure actuelle ; relève-les quand la couverture progresse. Une bonne
+couverture n'est pas une preuve de qualité : un test peut exécuter du code sans rien vérifier.
+
 ### Tests du frontend
 
 ```bash
