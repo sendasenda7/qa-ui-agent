@@ -17,6 +17,8 @@ qa-ui-agent/
 │   │   ├── localization-check.js# Étape 5 : vérification FR/AR + RTL
 │   │   ├── run-store.js         # Sauvegarde/lecture des runs (backend/runs/<runId>.json) + notes séparées
 │   │   ├── accessibility.js     # Audit d'accessibilité (axe-core) pendant le scénario : résumé par page, enregistreur
+│   │   ├── performance.js       # Contrôle de performance : TTFB, FCP, LCP, CLS, poids et requêtes de chaque page (seuils Google)
+│   │   ├── links.js             # Contrôle des liens, ancres et images cassés (requêtes serveur sans session, protégées contre le SSRF)
 │   │   ├── responsive.js        # Contrôle responsive : chaque page rejouée en mobile / tablette / bureau (défilement horizontal, cibles tactiles, viewport)
 │   │   ├── run-history.js       # Historique et tendances : regroupement par ticket, tendance, erreurs fréquentes (pur)
 │   │   ├── failure-capture.js   # Capture d'échec : élément visé encadré en rouge + bandeau (code et cause)
@@ -176,7 +178,7 @@ cd backend
 npm test
 ```
 
-`node:test` natif, aucune dépendance supplémentaire — plus de 280 tests. Couvre les garde-fous de
+`node:test` natif, aucune dépendance supplémentaire — plus de 310 tests. Couvre les garde-fous de
 `planner.js` (sélecteur halluciné, incohérence `assert_enabled`, validation structurelle, score
 de confiance, retry Groq, relecture IA double-passe, `assert_text` vide), `visual-diff.js`
 (comparaison identique/régression/dimensions différentes/scénarios non comparables), le runner
@@ -416,6 +418,52 @@ de page manquants...
 - Coût : environ 1 à 2 secondes par page auditée. Le code d'axe-core est lu dans `node_modules` et injecté dans la page par le
   navigateur (la politique de sécurité du site n'y change rien) ; aucune donnée n'est envoyée à un service externe.
 
+## Performance (Core Web Vitals)
+
+Sur l'écran « New Run », l'interrupteur **Performance** (activé par défaut) mesure chaque **nouvelle page rencontrée** pendant le test
+(même règle que l'accessibilité : adresse sans `?requête` ni `#ancre`, 4 pages au plus), avec les API standard du navigateur :
+
+| Indicateur | Ce qu'il mesure | Bon | Mauvais |
+|---|---|---|---|
+| **TTFB** | délai avant le premier octet reçu | ≤ 800 ms | > 1 800 ms |
+| **FCP** | premier affichage de contenu | ≤ 1 800 ms | > 3 000 ms |
+| **LCP** | affichage du plus gros élément visible | ≤ 2 500 ms | > 4 000 ms |
+| **CLS** | décalages de mise en page (sans unité) | ≤ 0,1 | > 0,25 |
+
+S'y ajoutent le **poids transféré** (alerte au-delà de 3 Mo), le **nombre de requêtes** (alerte au-delà de 100) et les 3 ressources les plus lentes.
+Les seuils sont ceux de Google. Chaque point faible est un défaut `P-TTFB`, `P-FCP`, `P-LCP`, `P-CLS`, `P-WEIGHT` ou `P-REQUESTS`
+(gravité importante si l'indicateur est « mauvais », moyenne s'il est « à améliorer »).
+
+- **Le statut du test ne change jamais** (comme l'accessibilité, le RTL et le responsive). Export JSON : `analyses.performance`.
+- **C'est une mesure de laboratoire** : un seul chargement, depuis la machine qui exécute l'outil et son réseau. Elle varie d'un test à
+  l'autre et ne remplace pas une mesure sur de vrais utilisateurs.
+- **LCP et CLS n'existent que sur Chromium** : sur Firefox et WebKit ils sont affichés « non mesuré ».
+- **Application monopage** : une page atteinte sans rechargement n'a pas de chronométrage propre (le navigateur ne décrit que le premier
+  document chargé). Elle est signalée « non notée » plutôt que de se voir attribuer de fausses mesures.
+- Le poids des ressources d'un autre domaine sans en-tête `Timing-Allow-Origin` est inconnu : le total est alors une approximation basse.
+
+## Liens cassés
+
+L'interrupteur **Liens cassés** (activé par défaut) lit, sur chaque nouvelle page (4 au plus), les liens, les ancres et les images, puis le
+**serveur** vérifie les liens (40 au plus par page, ceux du même site en premier) :
+
+- **Lien cassé** : 404 / 410, erreur serveur (5xx), nom de domaine introuvable, connexion refusée, certificat invalide ou délai de 6 s dépassé.
+- **Ancre cassée** : un lien `#section` dont aucun élément de la page n'a cet identifiant.
+- **Image cassée** : une image qui n'a pas pu se charger (les SVG sont ignorés).
+- **Protégé** (401, 403, 429) : compté à part, jamais « cassé » : un visiteur non connecté ne peut pas juger ces pages, et certains sites
+  répondent 403 ou 429 aux robots.
+- **Non vérifié** : adresses locales ou hôtes non autorisés, liens au-delà de la limite, délai global (30 s par page) dépassé.
+
+**Sécurité** : le serveur ne fait des requêtes que vers des adresses lues dans une page, donc :
+- chaque adresse **et chaque étape d'une redirection** passe par `assertSafeTargetUrl` : une page ne peut pas faire contacter `localhost`,
+  un réseau privé ou une adresse de métadonnées cloud, ni directement ni par redirection ; `ALLOWED_TARGET_HOSTS` est respecté
+  (les liens vers d'autres hôtes sont alors « non vérifiés ») ;
+- les requêtes partent **sans cookies ni session** : un lien « Déconnexion » ou « Supprimer » ne peut rien déclencher ;
+- `HEAD` d'abord, puis un `GET` limité à 1 octet si le serveur refuse `HEAD` ; aucun contenu n'est conservé.
+
+Les vérifications tournent en arrière-plan pendant le scénario et sont attendues à la fin du run. Le statut du test ne change jamais.
+Export JSON : `analyses.links`. Un lien signalé cassé reste à confirmer à la main.
+
 ## Responsive (mobile, tablette, bureau)
 
 Sur l'écran « New Run », l'interrupteur **Responsive** (activé par défaut) fait voir chaque page du test à trois tailles
@@ -608,8 +656,7 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
   peuvent être signalés à tort (liste `I18N_IGNORE_TEXTS` pour les ignorer).
 - **Comptes de test.** Une connexion automatique utilise `QA_SECRET_*` ; les captures montrent l'email et l'identifiant (pas le mot
   de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
-- **Pas encore couverts :** performance, liens cassés, iframes et pages derrière une
-  double authentification (non testés).
+- **Pas encore couverts :** iframes et pages derrière une double authentification (non testés).
 - **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
 
 ## Prochaines pistes

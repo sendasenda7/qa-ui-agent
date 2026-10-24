@@ -247,6 +247,40 @@ export function buildJsonReport(content) {
             })),
           }
         : null,
+      performance: runResult.performance
+        ? {
+            status: runResult.performance.status ?? null,
+            error: runResult.performance.error ?? null,
+            totals: runResult.performance.totals ?? null,
+            pages: (runResult.performance.pages ?? []).map((page) => ({
+              url: page.url,
+              title: page.title,
+              notMeasured: Boolean(page.notMeasured),
+              metrics: page.metrics ?? null,
+              ratings: page.ratings ?? null,
+              issues: (page.issues ?? []).map((issue) => ({ code: issue.code, severity: issue.severity, message: issue.message })),
+            })),
+          }
+        : null,
+      links: runResult.links
+        ? {
+            status: runResult.links.status ?? null,
+            error: runResult.links.error ?? null,
+            totals: runResult.links.totals ?? null,
+            pages: (runResult.links.pages ?? []).map((page) => ({
+              url: page.url,
+              title: page.title,
+              total: page.total,
+              checked: page.checked,
+              broken: page.broken ?? [],
+              brokenCount: page.brokenCount ?? 0,
+              restrictedCount: page.restrictedCount ?? 0,
+              uncheckedCount: page.uncheckedCount ?? 0,
+              brokenAnchors: page.brokenAnchors ?? [],
+              brokenImages: page.brokenImages ?? [],
+            })),
+          }
+        : null,
       visualDiff: visual
         ? {
             status: visual.status ?? null,

@@ -152,6 +152,8 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
       browserEngine: state.options?.browserEngine,
       checkA11y: Boolean(state.options?.checkA11y),
       checkResponsive: Boolean(state.options?.checkResponsive),
+      checkPerformance: Boolean(state.options?.checkPerformance),
+      checkLinks: Boolean(state.options?.checkLinks),
     });
     runResult.stepsTotal = finalResult.stepsTotal;
     runResult.stepsRun = finalResult.stepsRun;
@@ -162,6 +164,8 @@ async function executeAndTrack(runId, state, url, scenario, run, timeouts, analy
     if (finalResult.traceSkipped) runResult.traceSkipped = finalResult.traceSkipped;
     if (finalResult.accessibility) runResult.accessibility = finalResult.accessibility;
     if (finalResult.responsive) runResult.responsive = finalResult.responsive;
+    if (finalResult.performance) runResult.performance = finalResult.performance;
+    if (finalResult.links) runResult.links = finalResult.links;
 
     // Analyses optionnelles (RTL, diff visuel). Le statut reste "running" pendant toute
     // l'analyse : le frontend arrête de relire un run dès qu'il n'est plus "running", il
@@ -206,6 +210,8 @@ export async function startRun(
     checkVisualDiff = false,
     checkA11y = false,
     checkResponsive = false,
+    checkPerformance = false,
+    checkLinks = false,
     browserEngine,
   },
   deps = {},
@@ -229,6 +235,8 @@ export async function startRun(
       checkVisualDiff,
       checkA11y,
       checkResponsive,
+      checkPerformance,
+      checkLinks,
       stepTimeoutMs: timeoutMs,
       navigationTimeoutMs,
       browserEngine: engine,
@@ -401,6 +409,8 @@ export async function startReplay(sourceRunId, deps = {}, reservation = null) {
       // Comme l'analyse RTL, l'audit d'accessibilité suit le choix du run d'origine.
       checkA11y: Boolean(source.options?.checkA11y),
       checkResponsive: Boolean(source.options?.checkResponsive),
+      checkPerformance: Boolean(source.options?.checkPerformance),
+      checkLinks: Boolean(source.options?.checkLinks),
       browserEngine: engine,
       // Mêmes timeouts que le run d'origine (un staging lent le reste au rejeu).
       stepTimeoutMs: source.options?.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS,
