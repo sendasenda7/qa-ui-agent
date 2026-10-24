@@ -15,7 +15,8 @@
     "check-i18n": "node src/check-i18n.js",
     "server": "node src/server.js",
     "dev": "node src/server.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=85 --test-coverage-functions=90 \"test/**/*.test.js\""
   },
   "dependencies": {
     "axe-core": "4.14.0",
