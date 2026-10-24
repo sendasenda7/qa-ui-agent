@@ -193,11 +193,10 @@ npm run test:coverage    # lance les mêmes tests + vérifie les seuils de couve
 ```
 
 La commande affiche, fichier par fichier, la part du code exécutée par les tests, et **échoue** si la
-couverture globale passe sous **80 % des lignes, 82 % des branches et 85 % des fonctions** (seuils
-réglés dans `backend/package.json`). Les fichiers de test sont exclus du calcul (`--test-coverage-exclude`) :
-selon la version de Node ils sont sinon comptés, et leur couverture proche de 100 % gonflerait le total. La CI l'exécute à la place de `npm test` : la couverture ne peut
-pas baisser sans que la CI le signale. Mesure au moment de l'ajout : environ 83 % des lignes, 86 % des
-branches et 90 % des fonctions. Les fichiers les moins couverts (`crawler.js`, `localization-check.js`,
+couverture globale passe sous **85 % des lignes, 85 % des branches et 90 % des fonctions** (seuils
+réglés dans `backend/package.json`). La CI l'exécute à la place de `npm test` : la couverture ne peut
+pas baisser sans que la CI le signale. Mesure au moment de l'ajout : environ 91 % des lignes, 91 % des
+branches et 94 % des fonctions. Les fichiers les moins couverts (`crawler.js`, `localization-check.js`,
 `runner.js`) pilotent un vrai navigateur : ils seront couverts par un test de bout en bout. Les seuils sont
 volontairement un peu sous la mesure actuelle ; relève-les quand la couverture progresse. Une bonne
 couverture n'est pas une preuve de qualité : un test peut exécuter du code sans rien vérifier.
