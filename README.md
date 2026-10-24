@@ -210,9 +210,10 @@ npm run test:coverage    # idem + pourcentage de couverture (rapport HTML dans f
 ```
 
 Les tests sont dans `frontend/test/` : fonctions utilitaires, appels à l'API (avec `fetch`
-simulé, dont le cas 401), composants (badge, interrupteur, échec d'étape, trace, audit
-d'accessibilité, frise des étapes...), hooks (chronomètre, suivi d'un run) et écrans (connexion,
-nouveau test, rapports, historique). Aucun serveur n'est nécessaire. La commande de couverture
+simulé, dont le cas 401), composants (badge, interrupteur, échec d'étape, trace, analyses,
+frise des étapes, navigation...), hooks (chronomètre, suivi d'un run) et **tous les écrans**
+(connexion, tableau de bord, exploration, nouveau test, suivi en direct, rapport, historique,
+visuel/RTL). Aucun serveur n'est nécessaire. La commande de couverture
 échoue si elle passe sous les seuils réglés dans `frontend/vite.config.js` : la couverture ne
 peut pas baisser sans que la CI le signale. La CI affiche le pourcentage à chaque push.
 

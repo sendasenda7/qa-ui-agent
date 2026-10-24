@@ -17,7 +17,7 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov'],
       // Seuils volontairement un peu sous la couverture actuelle : ils empêchent qu'elle baisse,
       // et on les relève au fur et à mesure que des tests sont ajoutés.
-      thresholds: { statements: 50, branches: 40, functions: 45, lines: 50 },
+      thresholds: { statements: 90, branches: 85, functions: 90, lines: 90 },
     },
   },
 })
