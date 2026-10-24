@@ -598,6 +598,18 @@ Ce que l'outil garantit :
 pas l'email ni l'identifiant : utilise un compte de test, jamais un vrai compte. Ne mets jamais d'identifiants dans le
 texte d'un ticket : ils seraient enregistrés avec le run. Le fichier `.env` ne doit jamais être envoyé sur GitHub.
 
+## Nettoyage automatique
+
+Chaque run laisse des captures et parfois une trace de quelques Mo. Pour que le disque ne se remplisse pas, le serveur
+supprime les **captures, traces et images de comparaison de plus de 30 jours** : une fois au démarrage, puis une fois par jour.
+
+- Les fichiers des **50 runs les plus récents** sont toujours gardés, même s'ils sont anciens.
+- Le fichier de résultats de chaque run n'est **jamais** supprimé : l'historique, les tendances, les rapports et les notes
+  continuent de marcher. Un vieux rapport affiche « captures supprimées » à la place des images ; la comparaison visuelle
+  d'un run nettoyé l'indique au lieu d'échouer.
+- Réglages dans `backend/.env` : `RETENTION_DAYS` (défaut `30`, `0` = ne jamais supprimer) et `RETENTION_KEEP_RUNS` (défaut `50`).
+- Le serveur écrit une ligne dans son terminal quand il supprime quelque chose (nombre de fichiers et Mo libérés).
+
 ## Lancer avec Docker
 
 Une seule commande démarre tout l'outil (API + navigateurs Chromium/Firefox/WebKit + interface), sans installer
@@ -696,10 +708,9 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
 - **Comptes de test.** Une connexion automatique utilise `QA_SECRET_*` ; les captures montrent l'email et l'identifiant (pas le mot
   de passe). Pas de double authentification ni de captcha. L'accès à l'outil lui-même repose sur un mot de passe d'équipe unique.
 - **Pas encore couverts :** iframes et pages derrière une double authentification (non testés).
-- **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données, pas de nettoyage automatique).
+- **Stockage.** Les runs, les captures et les traces sont des fichiers dans `backend/` (pas de base de données). Les captures et traces anciennes sont nettoyées automatiquement (voir « Nettoyage automatique »), pas les fichiers de résultats.
 
 ## Prochaines pistes
 
-- Nettoyage automatique des vieux runs et screenshots (aucune limite de rétention pour l'instant)
 - Exploration après une saisie (aujourd'hui seuls les clics sont rejoués pendant l'exploration)
 - Courbe du score de confiance dans le temps, par ticket (l'Historique montre déjà réussite, durée et instabilité)

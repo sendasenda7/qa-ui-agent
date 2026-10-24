@@ -1,6 +1,6 @@
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
-import { readFile, mkdir, writeFile } from "fs/promises";
+import { readFile, mkdir, writeFile, access } from "fs/promises";
 
 // Au-delà de ce pourcentage de pixels différents, on considère que c'est une
 // vraie régression visuelle et pas juste du bruit de rendu (antialiasing, etc.).
@@ -110,6 +110,18 @@ export async function compareRuns(runA, runB, outputDir = "diff-screenshots") {
         description: stepB.description,
         comparable: false,
         reason: "Screenshot manquant pour au moins un des deux runs (étape probablement échouée).",
+      });
+      continue;
+    }
+
+    // Captures supprimées par le nettoyage automatique (voir cleanup.js) : on le dit au lieu de planter.
+    const missing = await Promise.all([stepA.screenshot, stepB.screenshot].map((file) => access(file).then(() => false, () => true)));
+    if (missing.some(Boolean)) {
+      stepDiffs.push({
+        index: i,
+        description: stepB.description,
+        comparable: false,
+        reason: "Capture supprimée par le nettoyage automatique (voir RETENTION_DAYS) : comparaison impossible.",
       });
       continue;
     }

@@ -7,6 +7,8 @@ import ProgressBar from "../components/ProgressBar.jsx";
 import RunAnalysis from "../components/RunAnalysis.jsx";
 import StepFailure from "../components/StepFailure.jsx";
 import TraceNote from "../components/TraceNote.jsx";
+import PurgedNotice from "../components/PurgedNotice.jsx";
+import { hideBrokenImage } from "../lib/images.js";
 import AttemptsNote from "../components/AttemptsNote.jsx";
 import FlakyNotice from "../components/FlakyNotice.jsx";
 import RunError from "../components/RunError.jsx";
@@ -296,6 +298,7 @@ export default function ReportDetail() {
               <img
                 src={screenshotUrl(step.screenshot)}
                 alt={step.description}
+                onError={hideBrokenImage}
                 className="w-16 h-12 object-cover rounded-lg border border-border shrink-0"
               />
             )}
@@ -316,6 +319,7 @@ export default function ReportDetail() {
             </div>
           </div>
         ))}
+        <PurgedNotice runResult={runResult} />
         <TraceNote runResult={runResult} />
       </section>
 
