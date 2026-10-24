@@ -42,3 +42,43 @@ jobs:
       - run: npx oxlint .
       - run: npm run test:coverage
       - run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    name: Docker (build + démarrage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fichier de configuration factice
+        run: cp backend/.env.example backend/.env
+      - run: docker compose build
+      - run: docker compose up -d
+      - name: Le frontend et l'API répondent
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080 >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:8080 >/dev/null
+          code=""
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"password":"mauvais"}' http://localhost:4000/api/login) || true
+            [ "$code" = "401" ] && break
+            sleep 2
+          done
+          echo "Réponse de /api/login avec un mauvais mot de passe : $code"
+          [ "$code" = "401" ]
+      - name: Les 3 navigateurs se lancent dans le conteneur
+        run: |
+          docker compose exec -T backend node -e "
+            import('playwright').then(async ({ chromium, firefox, webkit }) => {
+              for (const [name, type] of Object.entries({ chromium, firefox, webkit })) {
+                const browser = await type.launch();
+                await browser.close();
+                console.log(name, 'OK');
+              }
+            });
+          "
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down -v

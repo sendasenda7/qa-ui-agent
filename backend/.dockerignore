@@ -1,0 +1,12 @@
+node_modules
+test
+.env
+.env.*
+!.env.example
+runs
+run-screenshots
+run-traces
+diff-screenshots
+debug-screenshots
+reports
+coverage

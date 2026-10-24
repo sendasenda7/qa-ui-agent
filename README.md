@@ -598,6 +598,29 @@ Ce que l'outil garantit :
 pas l'email ni l'identifiant : utilise un compte de test, jamais un vrai compte. Ne mets jamais d'identifiants dans le
 texte d'un ticket : ils seraient enregistrés avec le run. Le fichier `.env` ne doit jamais être envoyé sur GitHub.
 
+## Lancer avec Docker
+
+Une seule commande démarre tout l'outil (API + navigateurs Chromium/Firefox/WebKit + interface), sans installer
+Node ni Playwright. Il faut juste [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+```bash
+cp backend/.env.example backend/.env     # puis remplis GROQ_API_KEY, AUTH_PASSWORD, JWT_SECRET
+docker compose up --build
+```
+
+- Interface : http://localhost:8080 — API : http://localhost:4000
+- Arrêter : `Ctrl+C`, ou `docker compose down` (les runs sont conservés).
+- Les runs, captures et traces sont dans un volume Docker (`qa-data`) : ils survivent aux redémarrages et aux
+  mises à jour. Pour tout effacer : `docker compose down -v`.
+- Premier lancement long (image de ~2 Go avec les navigateurs), les suivants sont rapides.
+- Pour tester une appli qui tourne sur ton PC (`localhost`), ajoute `ALLOW_PRIVATE_TARGETS=true` dans `backend/.env`,
+  et utilise `http://host.docker.internal:PORT` comme URL : dans le conteneur, `localhost` est le conteneur lui-même.
+- La version de l'image Playwright (`backend/Dockerfile`) doit rester identique à celle de `playwright` dans
+  `backend/package-lock.json` : si tu mets Playwright à jour, change aussi la ligne `FROM`.
+- Si tu changes l'adresse publique de l'API, mets-la dans `docker-compose.yml` (`VITE_API_URL` et `CORS_ORIGIN`)
+  puis `docker compose up --build`.
+- La CI construit les images, démarre les conteneurs et vérifie que l'interface, l'API et les 3 navigateurs répondent.
+
 ## Configuration (`backend/.env`)
 
 Copie `.env.example` en `.env`. Variables obligatoires : `GROQ_API_KEY`, `AUTH_PASSWORD`, `JWT_SECRET`
