@@ -116,6 +116,26 @@ export function attachNextPage(crawl, next) {
   };
 }
 
+/**
+ * 2e temps de l'exploration : la page atteinte APRÈS LA CONNEXION. Elle s'ajoute à la page du formulaire (`nextPage`,
+ * conservée telle quelle) : sur Helpify, par exemple, le formulaire n'apparaît qu'après le choix du profil et
+ * « Continuer » (1er temps), et le tableau de bord qu'après la connexion (2e temps).
+ * Ne garde que ce qu'elle apporte de nouveau par rapport à la page d'ouverture ET à la page du formulaire.
+ * Renvoie null s'il n'y a rien de nouveau.
+ */
+export function attachLoggedPage(crawl, next) {
+  if (!next || !Array.isArray(next.via) || next.via.length === 0) return null;
+  const knownElements = new Set([...crawl.elements, ...(crawl.nextPage?.elements || [])].map((el) => el.selector));
+  // Un texte est « déjà connu » seulement si sélecteur ET texte sont identiques : un même <h1> peut afficher
+  // un titre différent une fois connecté.
+  const textKey = (t) => `${t.selector}\u0000${t.text ?? ""}`;
+  const knownTexts = new Set([...(crawl.textElements || []), ...(crawl.nextPage?.textElements || [])].map(textKey));
+  const elements = (next.elements || []).filter((el) => !knownElements.has(el.selector));
+  const textElements = (next.textElements || []).filter((t) => !knownTexts.has(textKey(t)));
+  if (elements.length === 0 && textElements.length === 0) return null;
+  return { ...crawl, afterLogin: { via: next.via, url: next.url, title: next.title, elements, textElements } };
+}
+
 /** Résumé stocké dans le run (sans les éléments eux-mêmes). */
 export function summarizeNextPage(crawl) {
   const next = crawl?.nextPage;

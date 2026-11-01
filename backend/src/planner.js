@@ -162,7 +162,7 @@ PAGE ANALYSÉE : ${crawlResult.url}
 ${JSON.stringify(simplifiedElements, null, 2)}
 
 TEXTES VISIBLES (pour assert_visible / assert_text) :
-${JSON.stringify(simplifiedTexts, null, 2)}${buildNextPageSection(crawlResult.nextPage)}${buildSecretsSection()}`;
+${JSON.stringify(simplifiedTexts, null, 2)}${buildNextPageSection(crawlResult.nextPage)}${buildAfterLoginSection(crawlResult.afterLogin)}${buildSecretsSection()}`;
 }
 
 /**
@@ -211,6 +211,34 @@ NOUVEAUX ÉLÉMENTS INTERACTIFS (utilisables pour click/fill/select après ${act
 ${JSON.stringify(elements, null, 2)}
 
 NOUVEAUX TEXTES VISIBLES (pour assert_visible / assert_text après ${actionsLower}) :
+${JSON.stringify(texts, null, 2)}`;
+}
+
+/**
+ * Section du prompt décrivant la page atteinte APRÈS LA CONNEXION (voir attachLoggedPage dans exploration.js).
+ * Ces éléments n'existent qu'une fois connecté : seules des étapes placées après le clic de validation peuvent les utiliser.
+ */
+function buildAfterLoginSection(afterLogin) {
+  if (!afterLogin) return "";
+  const elements = afterLogin.elements.map((el) => ({
+    selector: el.selector,
+    tag: el.tag,
+    accessibleName: el.accessibleName,
+    type: el.type,
+    detectedBy: el.detectedBy,
+    disabledLooking: el.disabledLooking,
+  }));
+  const texts = afterLogin.textElements.map((t) => ({ selector: t.selector, kind: t.kind, text: t.text }));
+  return `
+
+PAGE ATTEINTE APRÈS LA CONNEXION${afterLogin.url ? ` (adresse : ${afterLogin.url})` : ""} :
+ces éléments n'existent PAS avant d'être connecté. Ne les utilise (clic, vérification...) que dans des étapes placées
+APRÈS le clic qui valide la connexion. Pour vérifier l'affichage de cette page, appuie-toi sur ces textes visibles.
+
+ÉLÉMENTS INTERACTIFS APRÈS LA CONNEXION :
+${JSON.stringify(elements, null, 2)}
+
+TEXTES VISIBLES APRÈS LA CONNEXION (pour assert_visible / assert_text) :
 ${JSON.stringify(texts, null, 2)}`;
 }
 
@@ -453,11 +481,14 @@ export async function reviewScenario(ticketText, scenario, apiKey) {
 export function validateScenario(scenario, crawlResult) {
   // Éléments et textes de la page atteinte après des clics (voir exploration.js), s'il y en a.
   const nextPage = crawlResult.nextPage;
-  const allElements = [...crawlResult.elements, ...(nextPage?.elements || [])];
+  // Page atteinte après la connexion (2e temps de l'exploration), s'il y en a une.
+  const afterLogin = crawlResult.afterLogin;
+  const allElements = [...crawlResult.elements, ...(nextPage?.elements || []), ...(afterLogin?.elements || [])];
   const knownSelectors = new Set([
     ...allElements.map((el) => el.selector),
     ...(crawlResult.textElements || []).map((t) => t.selector),
     ...(nextPage?.textElements || []).map((t) => t.selector),
+    ...(afterLogin?.textElements || []).map((t) => t.selector),
   ]);
   // Sélecteur de secours éventuel de chaque élément (voir crawler.js) : copié dans l'étape pour que
   // le runner puisse s'en servir sans avoir besoin du crawl.

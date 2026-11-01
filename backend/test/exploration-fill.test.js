@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pickExplorationActions, pickExplorationClicks, attachNextPage, summarizeExploration, MAX_EXPLORE_ACTIONS } from "../src/exploration.js";
-import { generateScenario } from "../src/planner.js";
+import { pickExplorationActions, pickExplorationClicks, attachNextPage, attachLoggedPage, summarizeExploration, MAX_EXPLORE_ACTIONS } from "../src/exploration.js";
+import { generateScenario, validateScenario } from "../src/planner.js";
 import { startRun } from "../src/run-executor.js";
 import { readRun } from "../src/run-store.js";
 
@@ -135,4 +135,99 @@ test("exécuteur : EXPLORE_AFTER_FILL=false revient aux clics seuls (donc rien �
   const { done } = await startRun(input, { crawl: async () => baseCrawl, plan: spyPlan([plan1]), run: okRun, explore: async () => { called++; return nextPage; } });
   await done;
   assert.equal(called, 0);
+});
+
+// ---- 2e temps : formulaire de connexion qui n'apparaît qu'après des clics (ex. choix d'un profil) ----
+const clickOnlyPlan = { ticketSummary: "s", warnings: [], steps: [nav, click("#role"), click("#cont")] };
+const formPage = { via: ["clic #role", "clic #cont"], url: "https://x.test/auth/login", title: "Login", elements: [{ selector: "#email" }, { selector: "#pwd" }, { selector: "#go" }], textElements: [], clicksDone: 2, failedClick: null };
+const loggedPage = { via: ["a", "b", "c", "d", "e"], url: "https://x.test/workspace", title: "Espace", elements: [{ selector: "#nouveau" }, { selector: "#go" }], textElements: [{ selector: "h1", kind: "heading", text: "Mon espace" }], afterFill: true, clicksDone: 5, failedClick: null };
+
+test("attachLoggedPage : garde la page du formulaire et n'ajoute que le nouveau", () => {
+  const withForm = attachNextPage(baseCrawl, formPage);
+  const enriched = attachLoggedPage(withForm, loggedPage);
+  assert.deepEqual(enriched.nextPage.elements.map((e) => e.selector), ["#pwd", "#go"], "#email était déjà sur la page d'ouverture");
+  assert.deepEqual(enriched.afterLogin.elements.map((e) => e.selector), ["#nouveau"]);
+  assert.equal(enriched.afterLogin.textElements[0].text, "Mon espace");
+  assert.equal(attachLoggedPage(withForm, { ...loggedPage, elements: [{ selector: "#go" }], textElements: [] }), null);
+  assert.equal(attachLoggedPage(withForm, null), null);
+  assert.equal(attachLoggedPage(withForm, { via: [], elements: [], textElements: [] }), null);
+});
+
+test("planner : un élément de la page connectée est accepté, un élément inventé refusé", () => {
+  const enriched = attachLoggedPage(attachNextPage(baseCrawl, formPage), loggedPage);
+  const scenario = { ticketSummary: "s", warnings: [], steps: [nav, { type: "assert_visible", selector: "#nouveau", description: "Bouton" }, { type: "click", selector: "#invente", description: "Inconnu" }] };
+  const result = validateScenario(scenario, enriched);
+  const by = Object.fromEntries(result.steps.map((s) => [s.description, s]));
+  assert.equal(by["Bouton"].selectorValid, true);
+  assert.equal(by["Inconnu"].selectorValid, false);
+});
+
+test("le prompt décrit la page atteinte après la connexion", async () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.GROQ_API_KEY;
+  process.env.GROQ_API_KEY = "fake-key";
+  const prompts = [];
+  global.fetch = async (url, opts) => {
+    prompts.push(JSON.parse(opts.body).messages[1].content);
+    return { ok: true, status: 200, headers: { get: () => null }, text: async () => "", json: async () => ({ choices: [{ message: { content: JSON.stringify({ ticketSummary: "s", warnings: [], steps: [] }) } }] }) };
+  };
+  try {
+    await generateScenario("ticket", attachLoggedPage(attachNextPage(baseCrawl, formPage), loggedPage));
+  } finally {
+    global.fetch = originalFetch;
+    process.env.GROQ_API_KEY = originalKey;
+  }
+  assert.match(prompts[0], /PAGE ATTEINTE APRÈS LA CONNEXION/);
+  assert.match(prompts[0], /https:\/\/x\.test\/workspace/);
+  assert.match(prompts[0], /Mon espace/);
+});
+
+test("exécuteur : formulaire révélé par des clics -> 2 explorations, 3 appels à l'IA", async () => {
+  const plan = spyPlan([clickOnlyPlan, plan1, plan2]);
+  const explored = [];
+  const explore = async (url, actions) => { explored.push(actions.map((a) => a.type ?? "click")); return explored.length === 1 ? formPage : loggedPage; };
+  const { runId, done } = await startRun(input, { crawl: async () => baseCrawl, plan, run: okRun, explore });
+  await done;
+  assert.deepEqual(explored, [["click", "click"], ["fill", "fill", "click"]]);
+  assert.equal(plan.calls.length, 3);
+  assert.equal(plan.calls[1].nextPage.elements[0].selector, "#pwd");
+  assert.equal(plan.calls[2].afterLogin.elements[0].selector, "#nouveau");
+  assert.equal(plan.calls[2].nextPage.elements.length, 2);
+  const { runResult, scenario } = await readRun(runId);
+  assert.ok(!runResult.crawl.exploration.afterFill);
+  assert.equal(runResult.crawl.loginExploration.afterFill, true);
+  assert.equal(runResult.crawl.loginExploration.usedForPlan, true);
+  assert.equal(scenario.steps.length, plan2.steps.length);
+});
+
+test("exécuteur : connexion déjà explorée au 1er temps -> pas de 2e exploration", async () => {
+  const plan = spyPlan([plan1, plan2]);
+  let calls = 0;
+  const explore = async () => { calls++; return nextPage; };
+  const { runId, done } = await startRun(input, { crawl: async () => baseCrawl, plan, run: okRun, explore });
+  await done;
+  assert.equal(calls, 1);
+  assert.equal((await readRun(runId)).runResult.crawl.loginExploration, undefined);
+});
+
+test("exécuteur : EXPLORE_AFTER_FILL=false -> pas de 2e temps", async () => {
+  process.env.EXPLORE_AFTER_FILL = "false";
+  const plan = spyPlan([clickOnlyPlan, plan1]);
+  let calls = 0;
+  const explore = async () => { calls++; return formPage; };
+  const { done } = await startRun(input, { crawl: async () => baseCrawl, plan, run: okRun, explore });
+  await done;
+  assert.equal(calls, 1);
+});
+
+test("exécuteur : le 2e temps échoue -> scénario conservé, avec avertissement", async () => {
+  const plan = spyPlan([clickOnlyPlan, plan1]);
+  let n = 0;
+  const explore = async () => { n++; if (n === 1) return formPage; throw new Error("page.goto: Timeout"); };
+  const { runId, done } = await startRun(input, { crawl: async () => baseCrawl, plan, run: okRun, explore });
+  await done;
+  const { runResult, scenario } = await readRun(runId);
+  assert.equal(runResult.status, "passed");
+  assert.match(scenario.warnings.join(" "), /Exploration après la connexion impossible/);
+  assert.equal(runResult.crawl.loginExploration.usedForPlan, false);
 });
