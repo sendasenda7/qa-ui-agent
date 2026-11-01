@@ -569,7 +569,12 @@ atteinte et redemande un scénario avec ses vrais éléments et textes.
   Une variable absente de `backend/.env` arrête l'exploration avec son nom (jamais sa valeur).
 - **Données de la page atteinte.** Les textes de la page atteinte après connexion sont envoyés à l'IA (Groq) : utilise un compte de
   test, pas un vrai compte. Identifiants refusés : l'exploration voit alors la page d'erreur, et le rapport l'indique.
-- Pour désactiver : `EXPLORE_AFTER_FILL=false` dans `backend/.env` (retour aux clics seuls).
+- **En deux temps quand le formulaire n'apparaît qu'après des clics.** Sur une page qui demande d'abord de choisir un profil puis de
+  cliquer « Continuer », le premier scénario ne contient pas encore de saisie. L'agent explore donc d'abord les clics (le formulaire
+  apparaît), redemande un scénario, puis, si celui-ci contient la connexion, explore une 2ᵉ fois jusqu'à la page connectée et
+  redemande un dernier scénario (3 appels à l'IA au plus). Le rapport affiche alors deux lignes : « Page explorée après « ... » »
+  puis « Page explorée après la saisie puis ... ». Si le 2ᵉ temps échoue, le scénario précédent est conservé avec un avertissement.
+- Pour désactiver : `EXPLORE_AFTER_FILL=false` dans `backend/.env` (retour aux clics seuls, un seul temps).
 - Le rapport affiche « Page explorée après la saisie puis « ... » ».
 
 ## Une page qui s'ouvre trop lentement dans l'outil

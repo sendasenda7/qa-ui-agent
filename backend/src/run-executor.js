@@ -1,5 +1,5 @@
 import { crawlPage, crawlAfterClicks } from "./crawler.js";
-import { pickExplorationClicks, pickExplorationActions, attachNextPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
+import { pickExplorationClicks, pickExplorationActions, attachNextPage, attachLoggedPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
 import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
@@ -286,6 +286,9 @@ export async function startRun(
       await saveRun(runId, state);
 
       let scenario = await plan(ticketText, crawlResult, { deepReview });
+      // Ce que le 1er temps de l'exploration a fourni (pour le 2e temps, la connexion).
+      let firstExplorationEnriched = null;
+      let firstExplorationHadFill = false;
 
       // Exploration après clic : si le scénario commence par des clics, on va voir la page atteinte
       // et on redemande un scénario avec ses éléments (formulaire d'une 2e étape, par exemple).
@@ -327,6 +330,48 @@ export async function startRun(
           console.log(
             `[run ${runId}] exploration après clic : ${runResult.crawl.exploration.clicksDone}/${clicks.length} clic(s), ` +
               `${runResult.crawl.exploration.newElementCount} nouvel(s) élément(s), ${used ? "scénario régénéré" : "scénario inchangé"}`
+          );
+          await saveRun(runId, state);
+          firstExplorationEnriched = enriched;
+          firstExplorationHadFill = clicks.some((a) => a.type && a.type !== "click");
+        }
+      }
+
+      // 2e temps : la connexion. Quand le formulaire n'apparaît qu'après des clics (choix d'un profil, « Continuer »),
+      // le 1er scénario n'a pas encore de saisies ; elles n'existent qu'après le 1er temps. On explore donc une 2e fois,
+      // en rejouant clics + saisies + validation, pour connaître la page atteinte une fois connecté.
+      if (explore && !firstExplorationHadFill && process.env.EXPLORE_AFTER_FILL !== "false" && scenario.steps?.length > 0) {
+        const actions = pickExplorationActions(scenario.steps);
+        if (actions.some((a) => a.type && a.type !== "click")) {
+          let next = null;
+          let enrichedLogin = null;
+          let used = false;
+          let exploreError = null;
+          try {
+            next = await explore(url, actions, { navigationTimeoutMs, browserEngine: engine });
+            enrichedLogin = attachLoggedPage(firstExplorationEnriched ?? crawlResult, next);
+            if (enrichedLogin) {
+              const third = await plan(ticketText, enrichedLogin, { deepReview });
+              if (third.steps?.length > 0) {
+                scenario = third;
+                used = true;
+              }
+            }
+          } catch (exploreErr) {
+            exploreError = truncate(String(exploreErr.message).split("\n")[0], 160);
+            scenario = {
+              ...scenario,
+              warnings: [
+                ...(scenario.warnings || []),
+                `Exploration après la connexion impossible (${exploreError}) : le scénario n'utilise pas la page atteinte après la connexion.`,
+              ],
+            };
+          }
+          const summary = summarizeExploration({ clicks: actions, next, enriched: enrichedLogin ? { nextPage: enrichedLogin.afterLogin } : null, used, error: exploreError });
+          runResult.crawl.loginExploration = { ...summary, afterFill: true };
+          console.log(
+            `[run ${runId}] exploration après la connexion : ${summary.clicksDone}/${actions.length} action(s), ` +
+              `${summary.newElementCount} nouvel(s) élément(s), ${used ? "scénario régénéré" : "scénario inchangé"}`
           );
           await saveRun(runId, state);
         }

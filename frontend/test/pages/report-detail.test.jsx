@@ -119,6 +119,16 @@ describe('ReportDetail : exploration', () => {
     renderPage()
     expect(await screen.findByText(expected)).toBeInTheDocument()
   })
+
+  it('affiche aussi le bilan de l\'exploration après la connexion (2e temps)', async () => {
+    api.getRun.mockResolvedValue(report({ crawl: {
+      exploration: { clicksPlanned: ['Choisir un profil', 'Continuer'], usedForPlan: true, newElementCount: 3, newTextCount: 0 },
+      loginExploration: { clicksPlanned: ['Saisir l\'email', 'Se connecter'], usedForPlan: true, afterFill: true, newElementCount: 2, newTextCount: 2 },
+    } }))
+    renderPage()
+    expect(await screen.findByText(/Page explorée après « Choisir un profil » puis « Continuer »/)).toBeInTheDocument()
+    expect(screen.getByText(/Page explorée après la saisie puis « Saisir l'email » puis « Se connecter » : 2 élément/)).toBeInTheDocument()
+  })
 })
 
 describe('ReportDetail : actions', () => {

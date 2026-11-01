@@ -241,6 +241,7 @@ export default function ReportDetail() {
           </a>
         )}
         {runResult.crawl?.exploration && <ExplorationNote exploration={runResult.crawl.exploration} />}
+        {runResult.crawl?.loginExploration && <ExplorationNote exploration={runResult.crawl.loginExploration} />}
         {hasWarnings && (
           <ul className="flex flex-col gap-1 mt-1">
             {scenario.warnings.map((w, i) => (
