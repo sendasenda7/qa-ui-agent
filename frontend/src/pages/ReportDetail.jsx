@@ -21,11 +21,11 @@ function ExplorationNote({ exploration }) {
   const planned = exploration.clicksPlanned.map((c) => `« ${c} »`).join(" puis ");
   let text;
   if (exploration.usedForPlan) {
-    text = `Page explorée après ${planned} : ${exploration.newElementCount} élément(s) et ${exploration.newTextCount} texte(s) en plus.`;
+    text = `Page explorée après ${exploration.afterFill ? "la saisie puis " : ""}${planned} : ${exploration.newElementCount} élément(s) et ${exploration.newTextCount} texte(s) en plus.`;
   } else if (exploration.error) {
     text = `Exploration après ${planned} impossible : ${exploration.error}`;
   } else if (exploration.failedClick) {
-    text = `Exploration arrêtée : le clic « ${exploration.failedClick.description} » n'a pas pu être fait (${exploration.failedClick.reason}).`;
+    text = `Exploration arrêtée : l'étape « ${exploration.failedClick.description} » n'a pas pu être faite (${exploration.failedClick.reason}).`;
   } else {
     text = `Exploration après ${planned} : rien de nouveau sur la page atteinte.`;
   }

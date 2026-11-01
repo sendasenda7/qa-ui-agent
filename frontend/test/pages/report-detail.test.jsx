@@ -111,7 +111,8 @@ describe('ReportDetail : exploration', () => {
   it.each([
     [{ clicksPlanned: ['Suivant'], usedForPlan: true, newElementCount: 3, newTextCount: 2 }, /Page explorée après « Suivant » : 3 élément\(s\) et 2 texte\(s\)/],
     [{ clicksPlanned: ['A', 'B'], error: 'timeout' }, /Exploration après « A » puis « B » impossible : timeout/],
-    [{ clicksPlanned: ['A'], failedClick: { description: 'Valider', reason: 'introuvable' } }, /clic « Valider » n'a pas pu être fait \(introuvable\)/],
+    [{ clicksPlanned: ['A'], failedClick: { description: 'Valider', reason: 'introuvable' } }, /étape « Valider » n'a pas pu être faite \(introuvable\)/],
+    [{ clicksPlanned: ['Saisir', 'Se connecter'], usedForPlan: true, afterFill: true, newElementCount: 4, newTextCount: 1 }, /Page explorée après la saisie puis « Saisir » puis « Se connecter » : 4 élément\(s\)/],
     [{ clicksPlanned: ['A'] }, /rien de nouveau sur la page atteinte/],
   ])('bilan %#', async (exploration, expected) => {
     api.getRun.mockResolvedValue(withExploration(exploration))

@@ -1,5 +1,6 @@
 import { launchBrowser } from "./browser.js";
-import { MAX_EXPLORE_CLICKS } from "./exploration.js";
+import { MAX_EXPLORE_ACTIONS } from "./exploration.js";
+import { resolveSecrets, maskSecrets, maskSecretsDeep } from "./secrets.js";
 import { gotoAndSettle, settlePage, waitForRendered, redactUrl, stripAnsi } from "./page-utils.js";
 import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
@@ -441,7 +442,19 @@ export async function crawlAfterClicks(url, clicks, options = {}) {
 
     const via = [];
     let failedClick = null;
-    for (const click of clicks.slice(0, MAX_EXPLORE_CLICKS)) {
+    let afterFill = false;
+    for (const click of clicks.slice(0, MAX_EXPLORE_ACTIONS)) {
+      const type = click.type ?? "click";
+      // Valeur à saisir : les variables {{QA_SECRET_*}} ne sont remplacées que maintenant, dans le navigateur.
+      const { value: typed, missing } = resolveSecrets(click.value ?? "");
+      if (type !== "click" && missing.length > 0) {
+        failedClick = {
+          description: click.description || click.selector,
+          selector: click.selector,
+          reason: `variable secrète absente de backend/.env : ${missing.join(", ")}`,
+        };
+        break;
+      }
       let clicked = false;
       let reason = "élément introuvable sur la page";
       // Le clic ATTEND que l'élément apparaisse (comme le fait le run) : sur une appli Angular, le bouton
@@ -454,12 +467,15 @@ export async function crawlAfterClicks(url, clicks, options = {}) {
       for (const [selector, timeout] of attempts) {
         if (!selector) continue;
         try {
-          await page.locator(selector).first().click({ timeout });
+          const locator = page.locator(selector).first();
+          if (type === "fill") await locator.fill(typed, { timeout });
+          else if (type === "select") await locator.selectOption(typed, { timeout });
+          else await locator.click({ timeout });
           clicked = true;
           break;
         } catch (err) {
-          // sélecteur refusé ou clic impossible : on essaie le sélecteur de secours
-          reason = stripAnsi(String(err.message)).split("\n")[0].slice(0, 160);
+          // sélecteur refusé ou action impossible : on essaie le sélecteur de secours
+          reason = maskSecrets(stripAnsi(String(err.message)).split("\n")[0].slice(0, 160));
         }
       }
       if (!clicked) {
@@ -467,13 +483,19 @@ export async function crawlAfterClicks(url, clicks, options = {}) {
         break;
       }
       via.push(click.description || click.selector);
+      if (type !== "click") {
+        afterFill = true;
+        continue; // une saisie ne change pas de page : on attend seulement après un clic
+      }
       await settlePage(page, 2000);
       await waitForRendered(page, 4000);
     }
 
     const { elements, textElements } = via.length > 0 ? await extractPageState(page) : { elements: [], textElements: [] };
     if (screenshotPath) await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-    return {
+    // Après une connexion, la page peut afficher l'identifiant saisi : on masque toute valeur secrète
+    // avant que le résultat parte vers l'IA ou le rapport.
+    return maskSecretsDeep({
       via,
       url: redactUrl(page.url()),
       title: await page.title().catch(() => ""),
@@ -481,7 +503,8 @@ export async function crawlAfterClicks(url, clicks, options = {}) {
       textElements,
       clicksDone: via.length,
       failedClick,
-    };
+      ...(afterFill ? { afterFill: true } : {}),
+    });
   } finally {
     await browser.close();
   }

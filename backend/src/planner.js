@@ -198,16 +198,19 @@ function buildNextPageSection(nextPage) {
   }));
   const texts = nextPage.textElements.map((t) => ({ selector: t.selector, kind: t.kind, text: t.text }));
   const clicks = nextPage.via.map((label) => `« ${label} »`).join(" puis ");
+  // Après une connexion simulée (saisies puis validation), ce ne sont plus seulement des clics.
+  const actions = nextPage.afterFill ? "LES ÉTAPES" : "LES CLICS";
+  const actionsLower = nextPage.afterFill ? "ces étapes" : "ces clics";
   return `
 
-PAGE ATTEINTE APRÈS LES CLICS ${clicks}${nextPage.url ? ` (adresse : ${nextPage.url})` : ""} :
+PAGE ATTEINTE APRÈS ${actions} ${clicks}${nextPage.url ? ` (adresse : ${nextPage.url})` : ""} :
 ces éléments n'existent PAS à l'ouverture de la page. N'utilise un sélecteur de cette liste que dans une étape
-placée APRÈS ces clics (les étapes "click" correspondantes doivent donc apparaître avant).
+placée APRÈS ${actionsLower} (les étapes correspondantes doivent donc apparaître avant).
 
-NOUVEAUX ÉLÉMENTS INTERACTIFS (utilisables pour click/fill/select après ces clics) :
+NOUVEAUX ÉLÉMENTS INTERACTIFS (utilisables pour click/fill/select après ${actionsLower}) :
 ${JSON.stringify(elements, null, 2)}
 
-NOUVEAUX TEXTES VISIBLES (pour assert_visible / assert_text après ces clics) :
+NOUVEAUX TEXTES VISIBLES (pour assert_visible / assert_text après ${actionsLower}) :
 ${JSON.stringify(texts, null, 2)}`;
 }
 

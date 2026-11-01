@@ -536,8 +536,8 @@ page atteinte (champs, boutons, textes) puis redemande un scénario à l'IA en l
 Les étapes sur le formulaire de la 2ᵉ page sont alors validées comme les autres : un sélecteur inventé
 reste refusé.
 
-- Seuls des **clics** sont faits pendant l'exploration (jamais de saisie ni d'envoi), 3 au plus, tant que le
-  scénario ne contient pas encore de saisie.
+- Par défaut, seuls des **clics** sont faits pendant l'exploration (jamais de saisie ni d'envoi), 3 au plus, tant que le
+  scénario ne contient pas encore de saisie. Seule exception : une **connexion** (voir « Exploration après une connexion »).
 - Un clic dont le bouton n'existe pas encore sur la page de départ (ex. « Continuer », visible seulement après le choix
   du profil) est quand même tenté **à partir du 2ᵉ clic** ; s'il échoue vraiment, l'exploration s'arrête et le rapport le dit.
 - Si rien de nouveau n'apparaît, l'IA n'est pas rappelée. Si l'exploration échoue, le run continue avec
@@ -554,6 +554,23 @@ npm run explore-clicks -- https://staging.helpify.tn/auth/login Je suis une Asso
 
 Les clics sont séparés par le mot « puis » (sous Windows, npm perd souvent les guillemets). La commande affiche les clics réussis, l'adresse atteinte, les nouveaux champs et textes, et enregistre une
 capture de la page atteinte dans `backend/debug-screenshots/`.
+
+## Exploration après une connexion
+
+Après un formulaire de connexion, la page atteinte (tableau de bord, menu...) est inconnue de l'IA, qui devait donc deviner ses
+éléments. Quand le scénario contient une **connexion** (une saisie `{{QA_SECRET_*}}` ou un champ de mot de passe, puis un clic de
+validation), l'exploration rejoue aussi les **saisies**, jusqu'au clic de validation inclus (6 actions au plus), lit la page
+atteinte et redemande un scénario avec ses vrais éléments et textes.
+
+- **Seulement les connexions.** Valider un autre formulaire (création d'un ticket, d'un don...) pendant l'exploration créerait des
+  données sur le site testé en plus de celles du vrai test : dans ce cas, l'exploration reste à des clics seuls.
+- **Les secrets restent secrets.** Les valeurs `QA_SECRET_*` ne sont insérées que dans le navigateur ; elles sont masquées (`***`)
+  dans tout ce qui est lu sur la page atteinte (par exemple un « Bienvenue, ... » avec l'email) avant d'aller vers l'IA ou le rapport.
+  Une variable absente de `backend/.env` arrête l'exploration avec son nom (jamais sa valeur).
+- **Données de la page atteinte.** Les textes de la page atteinte après connexion sont envoyés à l'IA (Groq) : utilise un compte de
+  test, pas un vrai compte. Identifiants refusés : l'exploration voit alors la page d'erreur, et le rapport l'indique.
+- Pour désactiver : `EXPLORE_AFTER_FILL=false` dans `backend/.env` (retour aux clics seuls).
+- Le rapport affiche « Page explorée après la saisie puis « ... » ».
 
 ## Une page qui s'ouvre trop lentement dans l'outil
 
@@ -694,9 +711,9 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
 - **L'IA peut varier.** Le scénario est généré par un modèle (Groq) : deux runs du même ticket peuvent donner des étapes un peu
   différentes. Les garde-fous retirent les sélecteurs inventés et les vérifications qui réussiraient toujours, et la « confiance »
   baisse quand le scénario ne vérifie rien, mais un ticket flou donne un test flou. Cite les libellés exacts et les adresses attendues.
-- **Les pages suivantes ne sont connues que pour les clics.** L'exploration rejoue au plus 3 clics du début du scénario. Après une
-  saisie ou une connexion, la page atteinte n'est pas explorée à l'avance : pour la vérifier, donne dans le ticket l'adresse
-  (`assert_url`) ou un texte exact qui doit apparaître.
+- **Les pages suivantes ne sont connues que pour les clics et les connexions.** L'exploration rejoue au plus 3 clics du début du scénario,
+  et une connexion (saisies d'identifiants puis validation). Après un autre formulaire, la page atteinte n'est pas explorée à l'avance :
+  pour la vérifier, donne dans le ticket l'adresse (`assert_url`) ou un texte exact qui doit apparaître.
 - **Un test « réussi » ne prouve que ce qu'il vérifie.** Sans étape `assert_*`, le rapport l'avertit et plafonne la confiance à 30 %.
 - **Réseau instable.** Si la connexion au site expire (`ERR_CONNECTION_TIMED_OUT`), l'ouverture de la page est réessayée une fois ;
   si elle échoue encore, le rapport l'indique clairement (« Connexion au site impossible », code `E-NAV-001`) au lieu d'une page vide.
@@ -713,5 +730,4 @@ Ce que l'outil ne sait pas (encore) faire, pour ne pas lui faire dire plus qu'il
 
 ## Prochaines pistes
 
-- Exploration après une saisie (aujourd'hui seuls les clics sont rejoués pendant l'exploration)
 - Courbe du score de confiance dans le temps, par ticket (l'Historique montre déjà réussite, durée et instabilité)

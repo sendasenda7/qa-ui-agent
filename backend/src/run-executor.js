@@ -1,5 +1,5 @@
 import { crawlPage, crawlAfterClicks } from "./crawler.js";
-import { pickExplorationClicks, attachNextPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
+import { pickExplorationClicks, pickExplorationActions, attachNextPage, summarizeNextPage, summarizeExploration } from "./exploration.js";
 import { generateScenario } from "./planner.js";
 import { runScenario } from "./runner.js";
 import { saveRun, readRun } from "./run-store.js";
@@ -291,7 +291,12 @@ export async function startRun(
       // et on redemande un scénario avec ses éléments (formulaire d'une 2e étape, par exemple).
       // Tout échec ici est sans gravité : on garde le premier scénario, avec un avertissement.
       if (explore && scenario.steps?.length > 0) {
-        const clicks = pickExplorationClicks(scenario.steps);
+        // Connexion (saisies d'identifiants puis validation) : on explore aussi après la saisie, sauf si
+        // EXPLORE_AFTER_FILL=false. Sinon, clics seuls comme avant.
+        const clicks =
+          process.env.EXPLORE_AFTER_FILL === "false"
+            ? pickExplorationClicks(scenario.steps)
+            : pickExplorationActions(scenario.steps);
         if (clicks.length > 0) {
           let next = null;
           let enriched = null;
