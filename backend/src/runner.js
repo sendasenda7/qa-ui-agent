@@ -3,7 +3,7 @@ import { captureFailureScreenshot } from "./failure-capture.js";
 import { gotoAndSettle, goBackAndSettle, waitForUrlContaining, isMeaningfulUrlFragment } from "./page-utils.js";
 import { StepError, classifyError, enrichFailure, isRetryable } from "./step-errors.js";
 import { STEPS_WITHOUT_SELECTOR } from "./step-types.js";
-import { resolveSecrets, maskSecretsDeep, hasPlaceholder } from "./secrets.js";
+import { resolveSecrets, maskSecretsDeep, hasPlaceholder, PASSWORD_FIELD } from "./secrets.js";
 import { createAccessibilityRecorder } from "./accessibility.js";
 import { createResponsiveRecorder } from "./responsive.js";
 import { createPerformanceRecorder } from "./performance.js";
@@ -32,9 +32,6 @@ export function getRetryConfig(env = process.env) {
     retryDelayMs: DEFAULT_RETRY_DELAY_MS,
   };
 }
-
-/** Champ de mot de passe d'après le sélecteur ou la description (scénarios anciens, sans repère `sensitive`). */
-const PASSWORD_FIELD = /passw|mot\s*de\s*passe|\bmdp\b|\bpwd\b/i;
 
 /**
  * Une trace Playwright (zip rejouable avec `npx playwright show-trace`) enregistre chaque action

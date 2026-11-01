@@ -11,6 +11,9 @@
 
 export const SECRET_PREFIX = "QA_SECRET_";
 
+/** Champ de mot de passe d'après le sélecteur ou la description (scénarios anciens, sans repère `sensitive`). */
+export const PASSWORD_FIELD = /passw|mot\s*de\s*passe|\bmdp\b|\bpwd\b/i;
+
 // Valeurs plus courtes que ça : pas masquées dans les messages (on abîmerait n'importe quel texte).
 const MIN_MASKED_LENGTH = 4;
 

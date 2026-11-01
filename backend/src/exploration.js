@@ -3,8 +3,13 @@
  * l'exécuteur de runs. Le navigateur, lui, n'est utilisé que par `crawlAfterClicks` (crawler.js).
  */
 
+import { hasPlaceholder, PASSWORD_FIELD } from "./secrets.js";
+
 /** Nombre maximum de clics enchaînés pendant l'exploration (au-delà, on s'arrête). */
 export const MAX_EXPLORE_CLICKS = 3;
+
+/** Nombre maximum d'actions (clics + saisies) rejouées pendant l'exploration. */
+export const MAX_EXPLORE_ACTIONS = 6;
 
 /**
  * Choisit, dans un scénario déjà validé, les clics qui mènent vers la page suivante : les clics du
@@ -32,6 +37,60 @@ export function pickExplorationClicks(steps, max = MAX_EXPLORE_CLICKS) {
   return clicks;
 }
 
+/** Une saisie « de connexion » : variable secrète `{{QA_SECRET_*}}` ou champ de mot de passe. */
+function isCredentialFill(step) {
+  if (step.type !== "fill") return false;
+  return (
+    (typeof step.value === "string" && hasPlaceholder(step.value)) ||
+    step.sensitive === true ||
+    PASSWORD_FIELD.test(`${step.selector ?? ""} ${step.description ?? ""}`)
+  );
+}
+
+/**
+ * Exploration « après une saisie » : pour un formulaire de CONNEXION (au moins une saisie d'identifiant secret ou
+ * de mot de passe, puis un clic de validation), on rejoue clics ET saisies du début du scénario jusqu'à ce clic de
+ * validation inclus, pour voir la page atteinte après la connexion.
+ *
+ * Volontairement limitée aux connexions : valider un autre formulaire (création d'un ticket, d'un don...) pendant
+ * l'exploration créerait des données sur le site testé, en plus de celles créées par le vrai test.
+ * Dans tous les autres cas, on retombe sur l'exploration après des clics seuls (pickExplorationClicks).
+ * Renvoie des actions { type: "click" | "fill" | "select", selector, fallbackSelector, description, value? }.
+ */
+export function pickExplorationActions(steps, max = MAX_EXPLORE_ACTIONS) {
+  const list = Array.isArray(steps) ? steps : [];
+  const actions = [];
+  let sawFill = false;
+  let credentials = false;
+  let submitted = false;
+
+  for (const step of list) {
+    if (actions.length >= max) break;
+    if (step.type === "go_back") break;
+    if (!["click", "fill", "select"].includes(step.type)) continue; // navigate, assert_* : rien ne change
+    if (!step.selector) break;
+    if (step.selectorValid === false && actions.length === 0) break;
+
+    actions.push({
+      type: step.type,
+      selector: step.selector,
+      fallbackSelector: step.fallbackSelector,
+      description: step.description,
+      ...(step.type === "click" ? {} : { value: step.value }),
+    });
+    if (step.type !== "click") {
+      sawFill = true;
+      if (isCredentialFill(step)) credentials = true;
+    } else if (sawFill) {
+      submitted = true;
+      break;
+    }
+  }
+
+  if (submitted && credentials) return actions;
+  return pickExplorationClicks(list);
+}
+
 /**
  * Ajoute au crawl la page atteinte après les clics, mais SEULEMENT ce qu'elle apporte de nouveau
  * (éléments et textes dont le sélecteur n'était pas déjà dans le crawl). Renvoie null s'il n'y a
@@ -46,7 +105,14 @@ export function attachNextPage(crawl, next) {
   if (elements.length === 0 && textElements.length === 0) return null;
   return {
     ...crawl,
-    nextPage: { via: next.via, url: next.url, title: next.title, elements, textElements },
+    nextPage: {
+      via: next.via,
+      url: next.url,
+      title: next.title,
+      elements,
+      textElements,
+      ...(next.afterFill ? { afterFill: true } : {}),
+    },
   };
 }
 
@@ -77,6 +143,7 @@ export function summarizeExploration({ clicks, next = null, enriched = null, use
     newElementCount: enriched?.nextPage.elements.length ?? 0,
     newTextCount: enriched?.nextPage.textElements.length ?? 0,
     usedForPlan: used,
+    afterFill: Boolean(next?.afterFill),
     error,
   };
 }
